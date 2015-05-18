@@ -2,7 +2,5 @@
 # All Rights Reserved. Licensed according to the terms of the Revised
 # BSD License. See LICENSE.txt for details.
 
-from jpeg2000   import Jpeg2000
-from pdf        import Pdf
-from tiff       import Tiff
-from xmp        import Metadata
+class Tiff (object):
+    pass
