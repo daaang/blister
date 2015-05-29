@@ -5,6 +5,7 @@ from bisect         import  bisect_left
 from collections    import  namedtuple, Mapping
 from fractions      import  Fraction
 from numpy          import  nan as NaN, inf as infinity
+import unittest
 
 # This is kinda an enumeration of TIFF data types.
 class TiffType:
@@ -120,7 +121,7 @@ class RangedList (Mapping):
         # We're done with this start index. Time to increment it and
         # to find the final index to look at.
         start  += 1
-        stop    = self.get_internal_index(key.stop, start)
+        stop    = self.get_internal_index(key.stop - 1, start)
 
         if start > stop:
             # If the last index comes before the new start index,
@@ -159,7 +160,7 @@ class RangedList (Mapping):
         # end. If it's after a different one, then this will result
         # true. Otherwise, we know this particular key is not yet
         # assigned.
-        return start < self.get_internal_index(key.stop, start)
+        return start < self.get_internal_index(key.stop - 1, start)
 
     def __setitem__ (self, key, value):
         key = self.key_to_slice(key)
@@ -174,12 +175,14 @@ class RangedList (Mapping):
         if key.start >= self.sorted_list[start][1]:
             # We're at least starting outside an internal slice. How are
             # we finishing?
-            if start >= self.get_internal_index(key.stop, start):
+            if start >= self.get_internal_index(key.stop - 1, start):
                 # Excellent. We won't be overwriting anything. We also
                 # already know exactly where to insert this so that it
                 # remains sorted.
                 self.sorted_list.insert(start + 1,
                                         (key.start, key.stop, value))
+
+                return
 
         # Otherwise, there's already some overlap. Error out.
         raise KeyError("Can't reassign values " + repr(key))
@@ -194,15 +197,15 @@ class RangedList (Mapping):
         return self.keys()
 
     def keys (self):
-        for i, j, k in self.sorted_list[:1]:
+        for i, j, k in self.sorted_list[1:]:
             yield slice(i, j)
 
     def values (self):
-        for i, j, k in self.sorted_list[:1]:
+        for i, j, k in self.sorted_list[1:]:
             yield k
 
     def items (self):
-        for i, j, k in self.sorted_list[:1]:
+        for i, j, k in self.sorted_list[1:]:
             yield (slice(i, j), k)
 
     def key_to_slice (self, key):
@@ -210,7 +213,12 @@ class RangedList (Mapping):
             # It's already a slice! Make sure the step is one, if it's
             # set at all.
             if key.step is None or key.step == 1:
-                # Awesome!
+                # Cool, it's a slice I can work with.
+                if key.start is None:
+                    # By default, we start at zero.
+                    return slice(0, key.stop)
+
+                # Otherwise, just do as you're told!
                 return key
 
             # The step is invalid.
@@ -230,7 +238,7 @@ class RangedList (Mapping):
         if x < 0:
             # If x is negative, well, I don't have a way to handle that.
             raise KeyError("Negative indeces are not allowed (you"
-                           " gave me {:d})".format(pos))
+                           " gave me {:d})".format(x))
 
         # We want the range that starts as late as possible while also
         # starting at or before x. The value I give to bisect_left is
@@ -273,7 +281,11 @@ class Tiff:
         # the more clear exception classes.
         pass
 
-    def __init__ (self, path_to_tiff):
+    def __init__ (self, file_object):
+        if "rb" not in file_object.mode:
+            raise ValueError("Expected a file object with mode 'rb'," \
+                             " not {}".format(repr(file_object.mode)))
+
         # Store the tiff path and position.
         self.path       = path_to_tiff
         self.tiff       = open(path_to_tiff, "rb")
@@ -288,8 +300,11 @@ class Tiff:
             # If it didn't work, raise an error.
             self.raise_error(0, "Unknown byte order: {}".format(str(e)))
 
+        # Read the magic number (it's 42).
         forty_two   = self.read_int(2)
+
         if forty_two != self.magic_check_number:
+            # Uh oh! It's something other than 42 oh no oh no!
             self.raise_error(2, "Expected {:d}; found {:d}".format(
                                     self.magic_check_number,
                                     forty_two))
@@ -297,6 +312,7 @@ class Tiff:
         ifd_offset  = self.read_int(4)
 
         self.tiff_bytes[0:self.tiff.tell()] = (None, None, None)
+
 
     def read_int (self, length):
         return self.bytes_to_int(self.tiff.read(length))
@@ -398,5 +414,137 @@ class Tiff:
                      denominator,
                      exp - offset)
 
+########################################################################
+############################### Testing ################################
+########################################################################
+
+class TestRangedList (unittest.TestCase):
+    def setUp (self):
+        self.ranged_list = RangedList()
+
+        self.ranged_list[0:10]      = "the first ten bytes"
+        self.ranged_list[90:100]    = "ninety through ninety-nine"
+        self.ranged_list[44]        = "forty-four"
+
+    def test_length (self):
+        self.assertEqual(len(self.ranged_list), 100,
+                         "length should be 100")
+
+    def test_bad_insert_left (self):
+        with self.assertRaisesRegex(KeyError,
+                                    r"Can't reassign values"):
+            self.ranged_list[85:95]     = "uh oh"
+
+    def test_bad_insert_right (self):
+        with self.assertRaisesRegex(KeyError,
+                                    r"Can't reassign values"):
+            self.ranged_list[95:105]    = "uh oh"
+
+    def test_bad_insert_inside (self):
+        with self.assertRaisesRegex(KeyError,
+                                    r"Can't reassign values"):
+            self.ranged_list[92:98]     = "uh oh"
+
+    def test_bad_insert_outside (self):
+        with self.assertRaisesRegex(KeyError,
+                                    r"Can't reassign values"):
+            self.ranged_list[85:105]    = "uh oh"
+
+    def test_bad_insert_zero_slice (self):
+        with self.assertRaisesRegex(KeyError,
+                                    r"Can't insert empty slice"):
+            self.ranged_list[20:20]     = "uh oh"
+
+    def test_bad_insert_stepped (self):
+        with self.assertRaisesRegex(KeyError,
+                                    r"Invalid step [0-9]+ \(if set" \
+                                    r" at all, it must be 1\)"):
+            self.ranged_list[30:50:2]   = "uh oh"
+
+    def test_bad_insert_nonslice (self):
+        with self.assertRaisesRegex(KeyError,
+                                    r"Need int or slice, not"):
+            self.ranged_list["hey"]     = "uh oh"
+
+    def test_bad_insert_negative (self):
+        with self.assertRaisesRegex(KeyError,
+                                    r"Negative indeces are not" \
+                                    r" allowed \(you gave me"):
+            self.ranged_list[-5:5]      = "uh oh"
+
+    def test_accessors_ints (self):
+        # Test each int accessor.
+        for i in range(10):
+            self.assertEqual(self.ranged_list[i], "the first ten bytes",
+                             "wrong values from the first insertion")
+
+        for i in range(90, 100):
+            self.assertEqual(self.ranged_list[i],
+                             "ninety through ninety-nine",
+                             "wrong values from the second insertion")
+
+    def test_accessors_slice (self):
+        # Test some slices.
+        self.assertEqual(self.ranged_list[5:8],
+                         [(slice(5, 8), "the first ten bytes")])
+
+        self.assertEqual(self.ranged_list[5:20],
+                         [(slice(5, 10), "the first ten bytes")])
+
+        self.assertEqual(self.ranged_list[:95],
+                         [(slice(0, 10), "the first ten bytes"),
+                         (slice(44, 45), "forty-four"),
+                         (slice(90, 95), "ninety through ninety-nine")])
+
+    def test_iteration (self):
+        items   = [
+            (slice(0, 10),      "the first ten bytes"),
+            (slice(44, 45),     "forty-four"),
+            (slice(90, 100),    "ninety through ninety-nine"),
+        ]
+
+        # We'll be able to infer the keys and values from the items.
+        # Since iteration is by keys by default, 
+        keys    = [[ ], [ ]]
+        values  = [ ]
+
+        # Autofill.
+        for i, j in items:
+            for k in range(2):
+                keys[k].append(i)
+            values.append(j)
+
+        for x in self.ranged_list.keys():
+            self.assertEqual(x, keys[0].pop(0))
+        for x in self.ranged_list.values():
+            self.assertEqual(x, values.pop(0))
+        for x in self.ranged_list.items():
+            self.assertEqual(x, items.pop(0))
+        for x in self.ranged_list:
+            self.assertEqual(x, keys[1].pop(0))
+
+    def test_containment_ints (self):
+        # Test some basic containment operations.
+        self.assertTrue(   0 in self.ranged_list)
+        self.assertTrue(   5 in self.ranged_list)
+        self.assertFalse( 10 in self.ranged_list)
+        self.assertFalse( 50 in self.ranged_list)
+        self.assertTrue(  90 in self.ranged_list)
+        self.assertTrue(  95 in self.ranged_list)
+        self.assertFalse(100 in self.ranged_list)
+
+    def test_containment_slices (self):
+        self.assertTrue(slice(0,    10)     in self.ranged_list)
+        self.assertTrue(slice(0,    15)     in self.ranged_list)
+        self.assertFalse(slice(10,  20)     in self.ranged_list)
+        self.assertTrue(slice(9,    28)     in self.ranged_list)
+        self.assertTrue(slice(3,     7)     in self.ranged_list)
+        self.assertTrue(slice(80,   91)     in self.ranged_list)
+        self.assertFalse(slice(80,  90)     in self.ranged_list)
+
+class TestTiff (unittest.TestCase):
+    pass
+
 if __name__ == "__main__":
-    import unittest
+    # If this is accessed directly, test everything.
+    unittest.main()
