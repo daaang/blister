@@ -4,7 +4,9 @@
 from bisect         import  bisect_left
 from collections    import  namedtuple, Mapping
 from fractions      import  Fraction
+from io             import  BytesIO, BufferedReader
 from numpy          import  nan as NaN, inf as infinity
+from random         import  randrange
 import unittest
 
 # This is kinda an enumeration of TIFF data types.
@@ -262,17 +264,15 @@ class Tiff:
     magic_check_number      = 42
 
     class TiffError (Exception):
-        def __init__ (self, path, position, message):
-            # Every tiff error comes with a path to the tiff, a position
-            # inside that tiff, and an error message.
-            self.path       = path
+        def __init__ (self, position, message):
+            # Every tiff error comes with a position inside the tiff and
+            # an error message.
             self.position   = position
             self.message    = message
 
         def __str__ (self):
             # And here's how we display the error by default.
-            return "{msg} (0x{pos:08x} {pth})".format(
-                    pth = self.path,
+            return "{msg} (0x{pos:08x})".format(
                     pos = self.position,
                     msg = str(self.message))
 
@@ -282,15 +282,27 @@ class Tiff:
         pass
 
     def __init__ (self, file_object):
-        if "rb" not in file_object.mode:
-            raise ValueError("Expected a file object with mode 'rb'," \
-                             " not {}".format(repr(file_object.mode)))
+        if not isinstance(file_object, BufferedReader):
+            # Assert that we have an "rb" file.
+            raise TypeError("Expected a file with mode 'rb'")
 
-        # Store the tiff path and position.
-        self.path       = path_to_tiff
-        self.tiff       = open(path_to_tiff, "rb")
+        # We should start at the beginning.
+        file_object.seek(0)
+
+        # Store the file object, and initialize a ranged list.
+        self.tiff       = file_object
         self.tiff_bytes = RangedList()
 
+        # Read the header. This will set some internal parameters and
+        # return the offset for the first IFD.
+        ifd_offset      = self.read_header()
+
+        # Retrieve a list of all IFDs. This won't actually examine any
+        # of the entries yet, but it'll make sure the IFDs are properly
+        # structured at least.
+        ifds            = self.read_ifds(ifd_offset)
+
+    def read_header (self):
         try:
             # Try to get the byte order.
             self.byte_order = self.expected_byte_orders[
@@ -298,21 +310,107 @@ class Tiff:
 
         except KeyError as e:
             # If it didn't work, raise an error.
-            self.raise_error(0, "Unknown byte order: {}".format(str(e)))
+            self.raise_error(-2, "Unknown byte order: {}".format(
+                str(e)))
 
         # Read the magic number (it's 42).
         forty_two   = self.read_int(2)
 
         if forty_two != self.magic_check_number:
             # Uh oh! It's something other than 42 oh no oh no!
-            self.raise_error(2, "Expected {:d}; found {:d}".format(
+            self.raise_error(-2, "Expected {:d}; found {:d}".format(
                                     self.magic_check_number,
                                     forty_two))
 
-        ifd_offset  = self.read_int(4)
+        # Cool. Next is the IFD offset. How many bytes have we read so
+        # far? (The answer is absolutely going to be 8.)
+        ifd_offset                      = self.read_int(4)
+        header_length                   = self.tiff.tell()
 
-        self.tiff_bytes[0:self.tiff.tell()] = (None, None, None)
+        if ifd_offset < header_length:
+            # Be sure the offset doesn't point to anywhere in the tiff
+            # header.
+            self.raise_error(-4, "IFD offset must be at least {:d};" \
+                             " you gave me {:d}".format(header_length,
+                                                        ifd_offset))
 
+        # Add the header bytes to the byte range.
+        self.add_bytes(0, header_length, (None, None, None))
+
+        # Return the first IFD offset.
+        return ifd_offset
+
+    def read_ifds (self, ifd_offset):
+        # We'll be collecting IFDs as well as info about problem
+        # entries.
+        ifds                    = [ ]
+        self.out_of_order_ifds  = [ ]
+
+        while ifd_offset != 0:
+            # Go to the IFD and read the entry count.
+            self.tiff.seek(ifd_offset)
+            entry_count = self.read_int(2)
+
+            if entry_count < 1:
+                # Be sure that we have at least one entry.
+                self.raise_error(-2,
+                        "IFD{:d} must have at least one entry".format(
+                                len(ifds)))
+
+            # Add the bytes.
+            self.add_bytes(ifd_offset,
+                           12 * entry_count + 6,
+                           (0, None, None))
+
+            # Get all the entries.
+            entries = { }
+            largest_entry_seen_so_far = 0
+
+            for i in range(entry_count):
+                # No need to get fancy just yet; for now, we're just
+                # grabbing what we can find within the IFD. We'll start
+                # following offsets and interpreting things later.
+                offset          = self.tiff.tell()
+                tag             = self.read_int(2)
+                valtype         = self.read_int(2)
+                numvals         = self.read_int(4)
+                value           = self.tiff.read(4)
+
+                if tag in entries:
+                    # No duplicate entries are allowed.
+                    self.raise_error(offset,
+                            "Tag {tag:d} (0x{tag:x}) is already in" \
+                            " IFD{ifd:d}; no duplicates allowed".format(
+                                    tag = tag,
+                                    ifd = len(ifds)))
+
+                if tag < largest_entry_seen_so_far:
+                    # Keep track of out-of-order entries. They make the
+                    # TIFF invalid, but I don't want to be this strict
+                    # unless I'm validating.
+                    self.out_of_order_ifds.append((len(ifds), tag))
+
+                else:
+                    # Otherwise, it's in order so far. Update our
+                    # largest entry tracker.
+                    largest_entry_seen_so_far = tag
+
+                # Put these values into our entry dictionary
+                entries[tag]    = (valtype, numvals, value, offset)
+
+            # We're done collecting entries.
+            ifds.append(entries)
+
+            # Get the offset for the next IFD. If we're looking at the
+            # last one, this will be zero, and this while loop will
+            # terminate here.
+            ifd_offset = self.read_int(4)
+
+        # Return the list of IFDs.
+        return ifds
+
+    def add_bytes (self, start, length, value):
+        self.tiff_bytes[start:start + length] = value
 
     def read_int (self, length):
         return self.bytes_to_int(self.tiff.read(length))
@@ -334,7 +432,7 @@ class Tiff:
         self.tiff.close()
 
         # Yayyy!
-        raise self.TiffError(self.path, pos, message)
+        raise self.TiffError(pos, message)
 
     def int_to_bytes (self, integer, length):
         return integer.to_bytes(length, self.byte_order)
@@ -504,24 +602,34 @@ class TestRangedList (unittest.TestCase):
         ]
 
         # We'll be able to infer the keys and values from the items.
-        # Since iteration is by keys by default, 
+        # Since iteration is by keys by default, we'll need two
+        # different arrays of keys.
         keys    = [[ ], [ ]]
         values  = [ ]
 
         # Autofill.
         for i, j in items:
             for k in range(2):
+                # Once again, we have two arrays of keys, to test both
+                # generators.
                 keys[k].append(i)
+
+            # We'll also fill the values.
             values.append(j)
 
-        for x in self.ranged_list.keys():
+        for x in self.ranged_list:
+            # Check the __iter__ generator first.
             self.assertEqual(x, keys[0].pop(0))
+
+        for x in self.ranged_list.keys():
+            # Check the explicit keys next.
+            self.assertEqual(x, keys[1].pop(0))
+
         for x in self.ranged_list.values():
             self.assertEqual(x, values.pop(0))
+
         for x in self.ranged_list.items():
             self.assertEqual(x, items.pop(0))
-        for x in self.ranged_list:
-            self.assertEqual(x, keys[1].pop(0))
 
     def test_containment_ints (self):
         # Test some basic containment operations.
@@ -543,7 +651,68 @@ class TestRangedList (unittest.TestCase):
         self.assertFalse(slice(80,  90)     in self.ranged_list)
 
 class TestTiff (unittest.TestCase):
-    pass
+    def test_file_is_mode_rb (self):
+        # Be sure we won't accept any files that aren't binary
+        # read-only.
+        for i in ("r", "w", "wb", "a", "ab"):
+            with open("/dev/null", i) as dev_null:
+                with self.assertRaisesRegex(TypeError,
+                        r"Expected a file with mode 'rb'"):
+                    tiff = Tiff(dev_null)
+
+    def test_invalid_byte_orders (self):
+        valid = set((b"II", b"MM"))
+
+        for i in range(0x100):
+            # We'll try a bunch of random bad bytestrings.
+            randbytes = b"II"
+            while randbytes in valid:
+                randbytes = randrange(0x10000).to_bytes(2, "big")
+
+            with self.assertRaisesRegex(Tiff.TiffError,
+                    r"Unknown byte order: .*0x00000000"):
+                tiff = Tiff(BufferedReader(BytesIO(randbytes)))
+
+    def test_forty_two (self):
+        orders  = {b"II": "little", b"MM": "big"}
+        regex   = r"Expected 42; found {:d} .0x00000002".format
+
+        for head, order in orders.items():
+            # Let's start with 0x2a00 just to be sure it's doing the
+            # right thing with the endienness.
+            j = 0x100 * 42
+            for i in range(0x100):
+                while j == 42:
+                    j = randrange(0x10000)
+
+                with self.assertRaisesRegex(Tiff.TiffError, regex(j)):
+                    tiff = Tiff(BufferedReader(BytesIO(
+                                head + j.to_bytes(2, order))))
+
+                j = randrange(0x10000)
+
+    def test_ifd_min (self):
+        prefix  = b"II*\0"
+        regex   = r"IFD offset must be at least 8; you gave me {:d}"
+        for i in range(8):
+            with self.assertRaisesRegex(Tiff.TiffError,
+                    regex.format(i)):
+                tiff = Tiff(BufferedReader(BytesIO(
+                            prefix + i.to_bytes(4, "little"))))
+
+    def test_ifd_entry_count (self):
+        with self.assertRaisesRegex(Tiff.TiffError,
+                r"IFD0 must have at least one entry .0x00000008"):
+            tiff = Tiff(BufferedReader(BytesIO(b"II*\0\10\0\0\0\0\0")))
+
+    def test_ifd_no_duplicate_entries (self):
+        with self.assertRaisesRegex(Tiff.TiffError,
+                r"Tag 256 \(0x100\) is already in IFD0;" \
+                r" no duplicates allowed .0x00000016"):
+            tiff = Tiff(BufferedReader(BytesIO(
+                    b"II*\0\10\0\0\0\2\0"
+                    + b"\0\1\1\0\1\0\0\0\0\0\0\0"
+                    + b"\0\1\1\0\1\0\0\0\0\0\0\0")))
 
 if __name__ == "__main__":
     # If this is accessed directly, test everything.
