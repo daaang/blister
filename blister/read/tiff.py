@@ -2,9 +2,10 @@
 # All Rights Reserved. Licensed according to the terms of the Revised
 # BSD License. See LICENSE.txt for details.
 from bisect         import  bisect_left
-from collections    import  namedtuple, Mapping
+from collections    import  namedtuple, Mapping, Sequence
 from fractions      import  Fraction
 from io             import  BytesIO, BufferedReader
+from itertools      import  count
 from numpy          import  nan as NaN, inf as infinity
 from random         import  randrange
 import unittest
@@ -210,6 +211,15 @@ class RangedList (Mapping):
         for i, j, k in self.sorted_list[1:]:
             yield (slice(i, j), k)
 
+    def first_after_or_at (self, key):
+        if key in self:
+            return key
+
+        if key >= len(self):
+            return None
+
+        return self.sorted_list[self.get_internal_index(key) + 1][0]
+
     def key_to_slice (self, key):
         if isinstance(key, slice):
             # It's already a slice! Make sure the step is one, if it's
@@ -263,6 +273,19 @@ class Tiff:
 
     magic_check_number      = 42
 
+    signed_types            = set((
+        TiffType.SBYTE,
+        TiffType.SSHORT,
+        TiffType.SLONG,
+        TiffType.SRATIONAL,
+    ))
+
+    strip_tags              = (
+        (0x111, 0x117),
+    )
+
+    NUL                     = b"\0"
+
     class TiffError (Exception):
         def __init__ (self, position, message):
             # Every tiff error comes with a position inside the tiff and
@@ -280,6 +303,15 @@ class Tiff:
         # I use this as a quick-and-dirty exception that will be fed to
         # the more clear exception classes.
         pass
+
+    OutOfOrderEntry     = namedtuple("OutOfOrderEntry",
+                            ("ifd", "tag", "prev_max"))
+    UnknownTypeEntry    = namedtuple("UnknownTypeEntry",
+                            ("ifd", "tag", "code", "offset"))
+    InvalidStringEntry  = namedtuple("InvalidStringEntry",
+                            ("ifd", "tag", "suggestions"))
+    IFDEntry            = namedtuple("IFDEntry",
+                            ("value", "tifftype", "offset"))
 
     def __init__ (self, file_object):
         if not isinstance(file_object, BufferedReader):
@@ -300,7 +332,20 @@ class Tiff:
         # Retrieve a list of all IFDs. This won't actually examine any
         # of the entries yet, but it'll make sure the IFDs are properly
         # structured at least.
-        ifds            = self.read_ifds(ifd_offset)
+        simple_ifds     = self.read_ifds(ifd_offset)
+
+        # Follow any and all offset links in the IFDs.
+        self.ifds       = self.internalize_ifds(simple_ifds)
+
+    def __getitem__ (self, key):
+        return self.ifds[key]
+
+    def __len__ (self):
+        return len(self.ifds)
+
+    def __iter__ (self):
+        for ifd in self.ifds:
+            yield ifd
 
     def read_header (self):
         try:
@@ -373,7 +418,7 @@ class Tiff:
                 offset          = self.tiff.tell()
                 tag             = self.read_int(2)
                 valtype         = self.read_int(2)
-                numvals         = self.read_int(4)
+                listlen         = self.read_int(4)
                 value           = self.tiff.read(4)
 
                 if tag in entries:
@@ -388,7 +433,8 @@ class Tiff:
                     # Keep track of out-of-order entries. They make the
                     # TIFF invalid, but I don't want to be this strict
                     # unless I'm validating.
-                    self.out_of_order_ifds.append((len(ifds), tag))
+                    self.out_of_order_ifds.append(self.OutOfOrderEntry(
+                        len(ifds), tag, largest_entry_seen_so_far))
 
                 else:
                     # Otherwise, it's in order so far. Update our
@@ -396,7 +442,7 @@ class Tiff:
                     largest_entry_seen_so_far = tag
 
                 # Put these values into our entry dictionary
-                entries[tag]    = (valtype, numvals, value, offset)
+                entries[tag]    = (valtype, listlen, value, offset)
 
             # We're done collecting entries.
             ifds.append(entries)
@@ -409,10 +455,257 @@ class Tiff:
         # Return the list of IFDs.
         return ifds
 
+    def internalize_ifds (self, simple_ifds):
+        # We'll be returning a more-complicated list of IFDs.
+        ifds                    = [ ]
+
+        # I'll keep track of unknown types and invalid strings.
+        self.unknown_types      = [ ]
+        invalid_strings         = [ ]
+
+        for simple_entries in simple_ifds:
+            # We'll construct a new entry dictionary.
+            entries             = { }
+
+            for tag in simple_entries:
+                # Get whatever info we had from before.
+                valtype, listlen, value, offset = simple_entries[tag]
+
+                if valtype not in TiffTypeDict:
+                    # I don't recognize this type, so I'm ignoring this
+                    # entry.
+                    self.unknown_types.append(self.UnknownTypeEntry(
+                        len(ifds), tag, valtype, offset))
+
+                    continue
+
+                # Cool, we do know the type. Use it with the listlen to
+                # figure out the total byte length required by this
+                # value.
+                valtype         = TiffTypeDict[valtype]
+                length          = valtype.bytecount * listlen
+
+                if length > len(value):
+                    # Uh oh! I need more than four bytes. That means our
+                    # "value" is actually an offset. Go to it.
+                    self.tiff.seek(self.bytes_to_int(value))
+
+                    # Before we actually read anything for real, add the
+                    # bytes to our ranged list.
+                    self.add_bytes(self.tiff.tell(),
+                                   length,
+                                   (len(ifds), tag, None))
+
+                    # That seemed to work ok. Read in our new, improved
+                    # value.
+                    value       = self.tiff.read(length)
+
+                if valtype.pytype is bytes:
+                    value       = value[:length]
+
+                    if valtype.tifftype == TiffType.ASCII:
+                        if value[-1] == 0:
+                            # If it's a valid string, strip the trailing
+                            # NUL byte.
+                            value = value[:-1]
+
+                        else:
+                            # If it's an invalid string, add its info to
+                            # the invalid string list. No need to error
+                            # out just yet, as this might be fixible.
+                            invalid_strings.append(
+                                    self.InvalidStringEntry(
+                                            len(ifds), tag, [ ]))
+
+                else:
+                    # We expect an array of values.
+                    value_array = [ ]
+
+                    if valtype.pytype is int:
+                        if valtype.tifftype in self.signed_types:
+                            # It's a signed int.
+                            convert = self.bytes_to_sint
+                        else:
+                            # It's an unsigned int.
+                            convert = self.bytes_to_int
+
+                    elif valtype.pytype is Fraction:
+                        if valtype.tifftype in self.signed_types:
+                            # It's a signed rational.
+                            convert = self.bytes_to_srational
+                        else:
+                            # It's an unsigned rational.
+                            convert = self.bytes_to_rational
+
+                    elif valtype.pytype is float:
+                        # It's a float (these are always signed).
+                        convert = self.bytes_to_float
+
+                    else:
+                        # I don't know what it is. To make it this far
+                        # with an unknown type should never happen.
+                        raise Exception("Unexpected pytype: " \
+                                        "{}".format(valtype.pytype))
+
+                    for i in range(0, length, valtype.bytecount):
+                        # For each slice in the value, append to our
+                        # array.
+                        value_array.append(convert(
+                            value[i:i+valtype.bytecount]))
+
+                    # We actually just want the array, now that it's
+                    # complete.
+                    value = value_array
+
+                # Yay! We have our value; add it to the new entry
+                # dictionary.
+                entries[tag] = self.IFDEntry(value,
+                                             valtype.tifftype,
+                                             offset)
+
+            # These entries comprise an IFD. Append to our new IFD list.
+            ifds.append(entries)
+
+        # Now that we have complete info, add bytes for strips (I'm
+        # considering any tag pairs known to contain offsets and lengths
+        # as strips). Now we have all necessary bytes accounted-for.
+        self.add_strip_bytes(ifds)
+
+        # Now that all the valid (ish?) bytes are accounted for, it's
+        # time to see if we can make sense of any and all invalid
+        # strings.
+        self.invalid_strings = self.try_to_fix_strings(ifds,
+                                                       invalid_strings)
+
+        # The IFD list is ready.
+        return ifds
+
+    def add_strip_bytes (self, ifds):
+        for ifd_number, ifd in enumerate(ifds):
+            # For each IFD, check the known strip tags.
+            for offset, length in self.strip_tags:
+                # Are these present?
+                if offset in ifd:
+                    # This IFD has offsets in this strip type.
+                    if length not in ifd:
+                        # But it doesn't have bytecounts! Whoooops!
+                        self.raise_error(ifd[offset].offset,
+                                "Can't have tag {:d} without also" \
+                                " having tag {:d}".format(offset,
+                                                          length))
+
+                    # Ok cool, it has both. Get the value arrays.
+                    offsets = ifd[offset].value
+                    lengths = ifd[length].value
+
+                    if len(offsets) != len(lengths):
+                        # Uh oh, the arrays have different lengths. I
+                        # can't match them up!
+                        self.raise_error(ifd[offset].offset,
+                                "Array lengths must match between" \
+                                " tags {:d} and {:d}".format(offset,
+                                                             length))
+
+                    for strip_i, pos_i, len_i in zip(count(),
+                                                     offsets,
+                                                     lengths):
+                        # Try to add the bytes for each strip.
+                        self.add_bytes(pos_i, len_i, (ifd_number,
+                                                      offset,
+                                                      strip_i))
+
+    def try_to_fix_strings (self, ifds, invalid_strings):
+        # We'll return the same list but with suggestions this time.
+        with_suggestions = [ ]
+
+        for ifd, tag, junk in invalid_strings:
+            # I'll put my suggestions here.
+            suggestions = [ ]
+            entry       = ifds[ifd][tag]
+            main_guess  = entry.value
+
+            # Go to the IFD entry. Skip the first four bytes (tag and
+            # type).
+            self.tiff.seek(entry.offset + 4)
+
+            # The next four bytes are the byte count.
+            strlen      = self.read_int(4)
+
+            # I know this'll be in scope even if I don't declare it
+            # here, but I'm paranoid.
+            full        = b""
+
+            if strlen <= 4:
+                # If the string is no more than four bytes long, all I
+                # can do is read all four bytes.
+                full    = self.tiff.read(4)
+
+            else:
+                # Go to the string and read it in again.
+                self.tiff.seek(self.read_int(4))
+                full    = self.tiff.read(strlen)
+
+                # Where are we? Where are we going?
+                pos     = self.tiff.tell()
+                nextpos = self.tiff_bytes.first_after_or_at(pos)
+
+                if nextpos is None:
+                    # If there's nothing after this, we can just read to
+                    # the end of the file.
+                    full += self.tiff.read()
+
+                else:
+                    # We found something else in the tiff, so we can't
+                    # read anything after that point (since it belongs
+                    # to some other part of the file).
+                    full += self.tiff.read(nextpos - pos)
+
+            # Search for a NUL byte.
+            index = full.find(self.NUL)
+            while index != -1:
+                # We found one! That means we have an alternate guess.
+                guess   = full[:index]
+
+                if guess == main_guess:
+                    # This guess actually matches our main guess! That
+                    # makes it far-and-away the best candidate. No need
+                    # to even keep track of anything else, really.
+                    suggestions = None
+                    break
+
+                # Otherwise, add this guess to the suggestion list. See
+                # if we can find another NUL byte.
+                suggestions.append(guess)
+                index = full.find(self.NUL, index + 1)
+
+            if suggestions is None:
+                # We found a valid string that matches the one given
+                # exactly. The TIFF is still invalid, but at least we
+                # basically know what the answer is. Nice! Just give the
+                # main guess again, to reinforce its probability.
+                suggestions = main_guess
+
+            elif strlen < len(full) and full[-1] != self.NUL:
+                # Otherwise, we have a list of suggestions. If our new
+                # "full" string is indeed longer than the main guess,
+                # then we should probably add it to the suggestion list.
+                # Unless, that is, its last byte is NUL, in which case
+                # it'll already have been added.
+                suggestions.append(full)
+
+            # Add a new entry, this time with whatever suggestions we
+            # managed to find.
+            with_suggestions.append(
+                    self.InvalidStringEntry(ifd, tag, suggestions))
+
+        return with_suggestions
+
     def add_bytes (self, start, length, value):
+        # This is just a shortcut for a commonly-run thing.
         self.tiff_bytes[start:start + length] = value
 
     def read_int (self, length):
+        # This is a shortcut for reading in an int from the tiff.
         return self.bytes_to_int(self.tiff.read(length))
 
     def raise_error (self, pos, message = None):
@@ -440,12 +733,36 @@ class Tiff:
     def bytes_to_int (self, bytestring):
         return int.from_bytes(bytestring, self.byte_order)
 
-    def bytes_to_rational (self, bytestring):
-        # Rather than look anything up
+    def bytes_to_sint (self, bytestring):
+        # We'll get the unsigned result, and we'll calculate the
+        # smallest integer too large to fit in this bytestring's length.
+        result      = self.bytes_to_int(bytestring)
+        one_more    = int.from_bytes(
+                        b"\1" + (0).to_bytes(len(bytestring), "big"),
+                        "big")
+
+        if result < one_more // 2:
+            # As long as the sign bit is not set, leave it as-is.
+            return result
+
+        # Otherwise, we subtract one_more to assert negativity.
+        return result - one_more
+
+    def general_bytes_to_rational (self, bytestring, to_int):
+        # Rather than look anything up, just go ahead and take half.
         numlength   = len(bytestring) // 2
 
-        return Fraction(self.bytes_to_int(bytestring[:numlength]),
-                        self.bytes_to_int(bytestring[numlength:]))
+        # We return a fraction.
+        return Fraction(to_int(bytestring[:numlength]),
+                        to_int(bytestring[numlength:]))
+
+    def bytes_to_rational (self, bytestring):
+        return self.general_bytes_to_rational(bytestring,
+                                              self.bytes_to_int)
+
+    def bytes_to_srational (self, bytestring):
+        return self.general_bytes_to_rational(bytestring,
+                                              self.bytes_to_sint)
 
     def bytes_to_float (self, bytestring):
         # The length of the bytestring matters.
@@ -651,6 +968,41 @@ class TestRangedList (unittest.TestCase):
         self.assertFalse(slice(80,  90)     in self.ranged_list)
 
 class TestTiff (unittest.TestCase):
+    # This is a valid tiff with CCITT Group4 compression.
+    tinytiff    = bytes.fromhex("""\
+                    49 49  2a 00  08 00 00 00               \
+                                                            \
+                    0c 00                                   \
+                    00 01  03 00  01 00 00 00  6c 00 00 00  \
+                    01 01  03 00  01 00 00 00  24 00 00 00  \
+                    02 01  03 00  01 00 00 00  01 00 00 00  \
+                    03 01  03 00  01 00 00 00  04 00 00 00  \
+                    06 01  03 00  01 00 00 00  00 00 00 00  \
+                    0a 01  03 00  01 00 00 00  01 00 00 00  \
+                    11 01  04 00  01 00 00 00  9e 00 00 00  \
+                    15 01  03 00  01 00 00 00  01 00 00 00  \
+                    17 01  04 00  01 00 00 00  50 00 00 00  \
+                    1c 01  03 00  01 00 00 00  01 00 00 00  \
+                    28 01  03 00  01 00 00 00  02 00 00 00  \
+                    3b 01  02 00  06 00 00 00  ee 00 00 00  \
+                                               00 00 00 00  \
+                                                            \
+                    f3 6c 90 cc c3 99 86 83                 \
+                    61 a0 db ff ff ff ff ff                 \
+                    91 6e 6d 92 19 21 91 0f                 \
+                    ff ff ff ff ff fe 5d 97                 \
+                    7f ff ff ff ff ff ff ff                 \
+                    f1 e3 ff ff ff ff ff ff                 \
+                    e5 91 ff ff ff ff ff ff                 \
+                    ff ff 1f ff ff ff ff ff                 \
+                    ff 24 3f ff ff ff ff ff                 \
+                    c4 44 44 47 c0 04 00 40                 \
+                                                            \
+                    4d 61 74 74 21 00""")
+
+    def setUp (self):
+        self.tiff_obj = Tiff(BufferedReader(BytesIO(self.tinytiff)))
+
     def test_file_is_mode_rb (self):
         # Be sure we won't accept any files that aren't binary
         # read-only.
@@ -692,27 +1044,45 @@ class TestTiff (unittest.TestCase):
                 j = randrange(0x10000)
 
     def test_ifd_min (self):
-        prefix  = b"II*\0"
         regex   = r"IFD offset must be at least 8; you gave me {:d}"
         for i in range(8):
             with self.assertRaisesRegex(Tiff.TiffError,
                     regex.format(i)):
-                tiff = Tiff(BufferedReader(BytesIO(
-                            prefix + i.to_bytes(4, "little"))))
+                tiff = Tiff(BufferedReader(BytesIO(self.tinytiff[:4]
+                            + i.to_bytes(4, "little"))))
 
     def test_ifd_entry_count (self):
         with self.assertRaisesRegex(Tiff.TiffError,
                 r"IFD0 must have at least one entry .0x00000008"):
-            tiff = Tiff(BufferedReader(BytesIO(b"II*\0\10\0\0\0\0\0")))
+            tiff = Tiff(BufferedReader(BytesIO(self.tinytiff[:8]
+                        + b"\0\0")))
 
     def test_ifd_no_duplicate_entries (self):
         with self.assertRaisesRegex(Tiff.TiffError,
                 r"Tag 256 \(0x100\) is already in IFD0;" \
                 r" no duplicates allowed .0x00000016"):
-            tiff = Tiff(BufferedReader(BytesIO(
-                    b"II*\0\10\0\0\0\2\0"
-                    + b"\0\1\1\0\1\0\0\0\0\0\0\0"
-                    + b"\0\1\1\0\1\0\0\0\0\0\0\0")))
+            tiff = Tiff(BufferedReader(BytesIO(self.tinytiff[:0x16]
+                        + b"\0" + self.tinytiff[0x17:])))
+
+    def test_valid_ifdlen (self):
+        self.assertEqual(1, len(self.tiff_obj))
+        self.assertEqual(0xc, len(self.tiff_obj[0]))
+
+    def test_valid_single_numbers (self):
+        for tag, value, message in (
+                (256, 108,  "width"),
+                (257, 36,   "height"),
+                (258, 1,    "bits/sample"),
+                (277, 1,    "samples/pixel"),
+                (259, 4,    "group4 compression"),
+                (262, 0,    "zero-is-white colorspace")):
+            self.assertEqual(1, len(self.tiff_obj[0][tag].value),
+                             message)
+            self.assertEqual(value, self.tiff_obj[0][tag].value[0],
+                             message)
+
+    def test_artist (self):
+        self.assertEqual(b"Matt!", self.tiff_obj[0][315].value)
 
 if __name__ == "__main__":
     # If this is accessed directly, test everything.
