@@ -867,8 +867,7 @@ class Tiff:
     def read_header (self):
         try:
             # Try to get the byte order.
-            self.byte_order = self.expected_byte_orders[
-                                            self.tiff.read(2)]
+            self.byte_order = self.expected_byte_orders[self.read(2)]
 
         except KeyError as e:
             # If it didn't work, raise an error.
@@ -936,7 +935,7 @@ class Tiff:
                 tag             = self.read_int(2)
                 valtype         = self.read_int(2)
                 listlen         = self.read_int(4)
-                value           = self.tiff.read(4)
+                value           = self.read(4)
 
                 if tag in entries:
                     # No duplicate entries are allowed.
@@ -1016,7 +1015,7 @@ class Tiff:
 
                     # That seemed to work ok. Read in our new, improved
                     # value.
-                    value       = self.tiff.read(length)
+                    value       = self.read(length)
 
                 if valtype.pytype is bytes:
                     value       = value[:length]
@@ -1141,7 +1140,6 @@ class Tiff:
             # I'll put my suggestions here.
             suggestions = [ ]
             entry       = ifds[ifd][tag]
-            main_guess  = entry.value
 
             # Go to the IFD entry. Skip the first four bytes (tag and
             # type).
@@ -1157,12 +1155,12 @@ class Tiff:
             if strlen <= 4:
                 # If the string is no more than four bytes long, all I
                 # can do is read all four bytes.
-                full    = self.tiff.read(4)
+                full    = self.read(4)
 
             else:
                 # Go to the string and read it in again.
                 self.tiff.seek(self.read_int(4))
-                full    = self.tiff.read(strlen)
+                full    = self.read(strlen)
 
                 # Where are we? Where are we going?
                 pos     = self.tiff.tell()
@@ -1171,13 +1169,13 @@ class Tiff:
                 if nextpos is None:
                     # If there's nothing after this, we can just read to
                     # the end of the file.
-                    full += self.tiff.read()
+                    full += self.read()
 
                 else:
                     # We found something else in the tiff, so we can't
                     # read anything after that point (since it belongs
                     # to some other part of the file).
-                    full += self.tiff.read(nextpos - pos)
+                    full += self.read(nextpos - pos)
 
             # Search for a NUL byte.
             index = full.find(self.NUL)
@@ -1185,7 +1183,7 @@ class Tiff:
                 # We found one! That means we have an alternate guess.
                 guess   = full[:index]
 
-                if guess == main_guess:
+                if guess == entry:
                     # This guess actually matches our main guess! That
                     # makes it far-and-away the best candidate. No need
                     # to even keep track of anything else, really.
@@ -1202,7 +1200,7 @@ class Tiff:
                 # exactly. The TIFF is still invalid, but at least we
                 # basically know what the answer is. Nice! Just give the
                 # main guess again, to reinforce its probability.
-                suggestions = main_guess
+                suggestions = entry
 
             elif strlen < len(full) and full[-1] != self.NUL:
                 # Otherwise, we have a list of suggestions. If our new
@@ -1223,9 +1221,21 @@ class Tiff:
         # This is just a shortcut for a commonly-run thing.
         self.tiff_bytes[start:start + length] = value
 
+    def read (self, length):
+        # Read in the bytes.
+        result = self.tiff.read(length)
+
+        if len(result) < length:
+            # If we didn't pull in as many as we expected, we've reached
+            # an unexpected EOF.
+            self.raise_error("Unexpected EOF")
+
+        # Otherwise, pass it on down.
+        return result
+
     def read_int (self, length):
         # This is a shortcut for reading in an int from the tiff.
-        return self.bytes_to_int(self.tiff.read(length))
+        return self.bytes_to_int(self.read(length))
 
     def raise_error (self, pos, message = None):
         if message is None:
@@ -1530,6 +1540,13 @@ class TestTiff (unittest.TestCase):
                 with self.assertRaisesRegex(TypeError,
                         r"Expected a file with mode 'rb'"):
                     tiff = Tiff(dev_null)
+
+    def test_invalid_eof (self):
+        eof = "Unexpected EOF"
+
+        for i in (0, 2, 4, 8, 32, -1):
+            with self.assertRaisesRegex(Tiff.TiffError, eof):
+                tiff = Tiff(BufferedReader(BytesIO(self.tinytiff[:i])))
 
     def test_invalid_byte_orders (self):
         valid = set((b"II", b"MM"))
