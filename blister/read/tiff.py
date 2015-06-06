@@ -11,6 +11,17 @@ from numpy          import  nan as NaN, inf as infinity
 from random         import  randrange
 import unittest
 
+int_types = (int,)
+
+def int_to_bytes (integer, length, byte_order):
+    return integer.to_bytes(length, byte_order)
+
+def bytes_to_int (bytestring, byte_order):
+    return int.from_bytes(bytestring, byte_order)
+
+def hex_to_bytes (hexstring):
+    return bytes.fromhex(hexstring)
+
 class IFDTag:
     NewSubfileType              = 0x00fe
     SubfileType                 = 0x00ff
@@ -300,7 +311,7 @@ class RangedList (Mapping):
 
     def __getitem__ (self, key):
         # Have a look at the given key.
-        if isinstance(key, int):
+        if isinstance(key, int_types):
             # Integers are simple; all there is to do is grab the index.
             i                   = self.get_internal_index(key)
             low, high, value    = self.sorted_list[i]
@@ -474,7 +485,7 @@ class RangedList (Mapping):
             raise KeyError("Invalid step {:d} (if set at all,"
                            " it must be 1)".format(key.step))
 
-        if isinstance(key, int):
+        if isinstance(key, int_types):
             # It's an int! For my purposes, it's a slice with a length
             # of one.
             return slice(key, key + 1)
@@ -1221,7 +1232,12 @@ class Tiff:
         # This is just a shortcut for a commonly-run thing.
         self.tiff_bytes[start:start + length] = value
 
-    def read (self, length):
+    def read (self, length = None):
+        if length is None:
+            # If no length is given, then there'll be no need for
+            # anything fancy. Just return a full read.
+            return self.tiff.read()
+
         # Read in the bytes.
         result = self.tiff.read(length)
 
@@ -1257,17 +1273,17 @@ class Tiff:
         raise self.TiffError(pos, message)
 
     def int_to_bytes (self, integer, length):
-        return integer.to_bytes(length, self.byte_order)
+        return int_to_bytes(integer, length, self.byte_order)
 
     def bytes_to_int (self, bytestring):
-        return int.from_bytes(bytestring, self.byte_order)
+        return bytes_to_int(bytestring, self.byte_order)
 
     def bytes_to_sint (self, bytestring):
         # We'll get the unsigned result, and we'll calculate the
         # smallest integer too large to fit in this bytestring's length.
         result      = self.bytes_to_int(bytestring)
-        one_more    = int.from_bytes(
-                        b"\1" + (0).to_bytes(len(bytestring), "big"),
+        one_more    = bytes_to_int(
+                        b"\1" + int_to_bytes(0, len(bytestring), "big"),
                         "big")
 
         if result < one_more // 2:
@@ -1498,7 +1514,7 @@ class TestRangedList (unittest.TestCase):
 
 class TestTiff (unittest.TestCase):
     # This is a valid tiff with CCITT Group4 compression.
-    tinytiff    = bytes.fromhex("""\
+    tinytiff    = hex_to_bytes("""\
                     49 49  2a 00  08 00 00 00               \
                                                             \
                     0c 00                                   \
@@ -1555,7 +1571,7 @@ class TestTiff (unittest.TestCase):
             # We'll try a bunch of random bad bytestrings.
             randbytes = b"II"
             while randbytes in valid:
-                randbytes = randrange(0x10000).to_bytes(2, "big")
+                randbytes = int_to_bytes(randrange(0x10000), 2, "big")
 
             with self.assertRaisesRegex(Tiff.TiffError,
                     r"Unknown byte order: .*0x00000000"):
@@ -1575,7 +1591,7 @@ class TestTiff (unittest.TestCase):
 
                 with self.assertRaisesRegex(Tiff.TiffError, regex(j)):
                     tiff = Tiff(BufferedReader(BytesIO(
-                                head + j.to_bytes(2, order))))
+                                head + int_to_bytes(j, 2, order))))
 
                 j = randrange(0x10000)
 
@@ -1585,7 +1601,7 @@ class TestTiff (unittest.TestCase):
             with self.assertRaisesRegex(Tiff.TiffError,
                     regex.format(i)):
                 tiff = Tiff(BufferedReader(BytesIO(self.tinytiff[:4]
-                            + i.to_bytes(4, "little"))))
+                            + int_to_bytes(i, 4, "little"))))
 
     def test_ifd_entry_count (self):
         with self.assertRaisesRegex(Tiff.TiffError,
