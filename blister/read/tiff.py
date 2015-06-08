@@ -3,7 +3,7 @@
 # BSD License. See LICENSE.txt for details.
 from bisect         import  bisect_left, insort_left
 from collections    import  namedtuple, Mapping, MutableMapping, \
-                            Sequence
+                            Sequence, Iterable
 from fractions      import  Fraction
 from io             import  BytesIO, BufferedReader
 from itertools      import  count
@@ -11,18 +11,48 @@ from numpy          import  nan as NaN, inf as infinity
 from random         import  randrange
 import unittest
 
-int_types = (int,)
+########################################################################
+################################ 2 to 3 ################################
+########################################################################
+############ Also, be sure to run on the command line:      ############
+############                                                ############
+############   $ sed -i -e 's/assertRaisesRegex/&p/' [file] ############
+########################################################################
+
+#int_types = (int, long)
+int_types = int
 
 def int_to_bytes (integer, length, byte_order):
+    #result = ""
+    #while integer > 0:
+        #result += chr(integer % 0x100)
+        #integer //= 0x100
+    #result += "\0" * (length - len(result))
+    #if byte_order == "big":
+        #return result[::-1]
+    #return result
     return integer.to_bytes(length, byte_order)
 
 def bytes_to_int (bytestring, byte_order):
+    #if byte_order == "little":
+        #bytestring = bytestring[::-1]
+    #result = 0
+    #for byte in bytestring:
+        #result *= 0x100
+        #result += ord(byte)
+    #return result
     return int.from_bytes(bytestring, byte_order)
 
 def hex_to_bytes (hexstring):
+    #return hexstring.replace(" ", "").decode("hex")
     return bytes.fromhex(hexstring)
 
+########################################################################
+############################# TIFF Classes #############################
+########################################################################
+
 class IFDTag:
+    """IFD tags by name"""
     NewSubfileType              = 0x00fe
     SubfileType                 = 0x00ff
 
@@ -133,16 +163,110 @@ class IFDTag:
     ReferenceBlackWhite         = 0x0214
 
     StripRowCounts              = 0x022f
-
     XMP                         = 0x02bc
-
     ImageID                     = 0x800d
-
     Copyright                   = 0x8298
-
     ImageLayer                  = 0x87ac
 
+    # Private tags
+    WangAnnotation              = 0x80a4
+
+    MDFileTag                   = 0x82a5
+    MDScalePixel                = 0x82a6
+    MDColorTable                = 0x82a7
+    MDLabName                   = 0x82a8
+    MDSampleInfo                = 0x82a9
+    MDPrepDate                  = 0x82aa
+    MDPrepTime                  = 0x82ab
+    MDFileUnits                 = 0x82ac
+
+    ModelPixelScaleTag          = 0x830e
+
+    IPTC                        = 0x83bb
+
+    INGRPacketDataTag           = 0x847e
+    INGRFlagRegisters           = 0x847f
+
+    IrasBTransformationMatrix   = 0x8480
+    ModelTiepointTag            = 0x8482
+    ModelTransformationTag      = 0x85d8
+
+    Photoshop                   = 0x8649
+
+    ExifIFD                     = 0x8769
+
+    ICCProfile                  = 0x8773
+
+    GeoKeyDirectoryTag          = 0x87af
+    GeoDoubleParamsTag          = 0x87b0
+    GeoAsciiParamsTag           = 0x87b1
+
+    GPS_IFD                     = 0x8825
+
+    HylaFAXFaxRecvParams        = 0x885c
+    HylaFAXFaxSubAddress        = 0x885d
+    HylaFAXFaxRecvTime          = 0x885e
+
+    ImageSourceData             = 0x935c
+
+    InteroperabilityIFD         = 0xa005
+
+    GDAL_METADATA               = 0xa480
+    GDAL_NODATA                 = 0xa481
+
+    OceScanjobDescription       = 0xc427
+    OceApplicationSelector      = 0xc428
+    OceIdentificationNumber     = 0xc429
+    OceImageLogicCharacteristics= 0xc42a
+
+    DNGVersion                  = 0xc612
+    DNGBackwardVersion          = 0xc613
+    UniqueCameraModel           = 0xc614
+    LocalizedCameraModel        = 0xc615
+    CFAPlaneColor               = 0xc616
+    CFALayout                   = 0xc617
+
+    LinearizationTable          = 0xc618
+    BlackLevelRepeatDim         = 0xc619
+    BlackLevel                  = 0xc61a
+    BlackLevelDeltaH            = 0xc61b
+    BlackLevelDeltaV            = 0xc61c
+    WhiteLevel                  = 0xc61d
+    DefaultScale                = 0xc61e
+    DefaultCropOrigin           = 0xc61f
+
+    DefaultCropSize             = 0xc620
+    ColorMatrix1                = 0xc621
+    ColorMatrix2                = 0xc622
+    CameraCalibration1          = 0xc623
+    CameraCalibration2          = 0xc624
+    ReductionMatrix1            = 0xc625
+    ReductionMatrix2            = 0xc626
+    AnalogBalance               = 0xc627
+
+    AsShotNeutral               = 0xc628
+    AsShotWhiteXY               = 0xc629
+    BaselineExposure            = 0xc62a
+    BaselineNoise               = 0xc62b
+    BaselineSharpness           = 0xc62c
+    BayerGreenSplit             = 0xc62d
+    LinearResponseLimit         = 0xc62e
+    CameraSerialNumber          = 0xc62f
+
+    LensInfo                    = 0xc630
+    ChromaBlurRadius            = 0xc631
+    AntiAliasStrength           = 0xc632
+    DNGPrivateData              = 0xc634
+    MakerNoteSafety             = 0xc635
+
+    CalibrationIlluminant1      = 0xc65a
+    CalibrationIlluminant2      = 0xc65b
+    BestQualityScale            = 0xc65c
+
+    AliasLayerMetadata          = 0xc660
+
 class IFDCompression:
+    """IFDTag.Compression values"""
     uncompressed        = 1
     CCITT_ID            = 2
     Group3Fax           = 3
@@ -152,15 +276,27 @@ class IFDCompression:
     PackBits            = 0x8005
 
 class IFDExtraSamples:
+    """IFDTag.ExtraSamples values"""
     Unspecified         = 0
     Associated          = 1
     Unassociated        = 2
 
 class IFDFillOrder:
+    """IFDTag.FillOrder values"""
     LeftToRight         = 1
     RightToLeft         = 2
 
 class IFDOrientation:
+    """IFDTag.Orientation values
+
+    These, rather than describe the actual interpretation, give the list
+    of transformations that would be required in order to display the
+    image at a normal orientation.
+
+    These arguments (excepting "normal") are the exact things one could
+    hand to pnmflip.
+    """
+
     normal                          = 1
     leftright                       = 2
     leftright_topbottom             = 3
@@ -171,6 +307,7 @@ class IFDOrientation:
     transpose_topbottom             = 8
 
 class IFDPhotometricInterpretation:
+    """IFDTag.PhotometricInterpretation values"""
     WhiteIsZero         = 0
     BlackIsZero         = 1
     RGB                 = 2
@@ -178,26 +315,31 @@ class IFDPhotometricInterpretation:
     TransparencyMask    = 4
 
 class IFDPlanarConfiguration:
+    """IFDTag.PlanarConfiguration values"""
     Chunky              = 1
     Planar              = 2
 
 class IFDResolutionUnit:
+    """IFDTag.ResolutionUnit values"""
     NoUnit              = 1
     Inch                = 2
     Centimeter          = 3
 
 class IFDSubfileType:
+    """IFDTag.SubfileType values"""
     FullResolution      = 1
     ReducedResolution   = 2
     SinglePage          = 3
 
 class IFDThresholding:
+    """IFDTag.Thresholding values"""
     Nothing             = 1
     Ordered             = 2
     Randomized          = 3
 
 # This is kinda an enumeration of TIFF data types.
 class TiffType:
+    """IFD value types by name"""
     # Everything really should be one of these five types.
     BYTE        = 1
     ASCII       = 2
@@ -237,6 +379,9 @@ for pytype, bytecount, tifftype in (
     # Put this info into the dictionary.
     TiffTypeDict[tifftype] = TiffTypeTuple(tifftype, pytype, bytecount)
 
+# Just in case, I'll want to be able to handle floats in TIFFs. These
+# are the bit masks I'll need to apply to such values, in order to
+# extract the sign, exponent, and value.
 IEEE_754_Parameters = {
     4:  (0x80000000,
          0x7f800000,
@@ -246,6 +391,7 @@ IEEE_754_Parameters = {
          0x000fffffffffffff),
 }
 
+# This simply pairs IFD tags with IFD value classes.
 IFDTagPairs = (
     (IFDTag.Compression,                IFDCompression),
     (IFDTag.ExtraSamples,               IFDExtraSamples),
@@ -259,6 +405,24 @@ IFDTagPairs = (
 )
 
 def make_backways_map (enum_class):
+    """Make a backways value mapping.
+
+    This takes in what is basically an enum class and constructs a
+    dictionary keyed on the values. Its values will be the associated
+    name strings.
+
+        >>> class SomeEnum:
+        ...     ThingOne    = 1
+        ...     ThingTwo    = 2
+        ...     ThingThree  = 3
+        ... 
+        >>> make_backways_map(SomeEnum)
+        {1: "ThingOne", 2: "ThingTwo", 3: "ThingThree"}
+
+    This mostly functions just for error reporting and human-readable
+    outputs and soforth. Just to be pretty, natch.
+    """
+
     # We're making a dictionary.
     result  = { }
 
@@ -287,17 +451,39 @@ def make_backways_map (enum_class):
 
 # Here's a nice backways IFD tag map.
 TiffTagNameDict     = make_backways_map(IFDTag)
+
+# We'll do the same thing for IFD tag values.
 TiffTagValueDict    = { }
 for tag, value_class in IFDTagPairs:
     TiffTagValueDict[tag] = make_backways_map(value_class)
 
 class Float:
+    """Lossless float storage.
+
+    This exists to store floats read in from TIFFs without losing any
+    data whatsoever.
+    """
+
     def __init__ (self, numerator, denominator, exponent):
+        """Initialize float.
+
+        Takes in a numerator, denominator, and exponent. Stores a
+        Fraction and the exponent:
+
+            >>> Float(1, 2, 3)
+            <Float 2**(3) * 1 / 2>
+            >>> float(Float(1, 2, 3))
+            4.0
+            >>> float(Float(1, 2, 100))
+            6.338253001141147e+29
+        """
+
         # We keep a fraction and an exponent.
         self.fraction   = Fraction(numerator, denominator)
         self.exponent   = exponent
 
     def __float__ (self):
+        """Convert to usable float."""
         if self.exponent < 0:
             # Negative exponents invoke division.
             return float(self.fraction) / (float(2)**(-self.exponent))
@@ -305,11 +491,90 @@ class Float:
         # Positive exponents are for multiplying.
         return float(self.fraction) * (float(2)**self.exponent)
 
+    def __repr__ (self):
+        """Represent an instance."""
+        return "<{} 2**({:d}) * {:d} / {:d}>".format(
+                self.__class__.__name__,
+                self.exponent,
+                self.fraction.numerator,
+                self.fraction.denominator)
+
 class RangedList (Mapping):
+    """Ranged List
+
+    This is something between a list and a dict, keyed on ranges.
+
+        >>> a           = RangedList()
+        >>> a[0:8]      = "first eight"
+        >>> a[32]       = "single value"
+        >>> a[64:128]   = "big group"
+        >>> a
+        <RangedList: [0:8]:     'first eight',
+                     [32:33]:   'single value',
+                     [64:128]:  'big group'>
+
+    It supports everything you would expect from a mutable mapping
+    except that values cannot be destroyed or modified. Length is based
+    not on actual value count but on highest value recorded.
+
+        >>> len(a)
+        128
+
+    Testing for containment works as expected.
+
+        >>> 5 in a
+        True
+        >>> 10 in a
+        False
+        >>> 128 in a
+        False
+
+    Pulling values also works as expected.
+
+        >>> a[5]
+        'first eight'
+        >>> a[8]
+        Traceback (most recent call last):
+          File "<stdin>", line 1, in <module>
+          File "./tiff.py", line 418, in __getitem__
+            # I return the value only if the key is inside this range.
+        KeyError: 'Not yet defined: 8'
+        >>> a.get(8, "nothin")
+        'nothin'
+
+    You can also retrieve by slice, and you'll receive a list of
+    2-tuples. The second value (labelled "value") in each tuple will be
+    the value you set; the first value (labelled "key_range") will be
+    some subslice of your input slice such that all contained keys
+    correspond to the value.
+
+        >>> a[4:5]
+        [SliceTuple(key_range=slice(4, 5, None), value='first eight')]
+        >>> a[4:70]
+        [SliceTuple(key_range=slice(4, 8, None), value='first eight'),
+        SliceTuple(key_range=slice(32, 33, None), value='single value'),
+        SliceTuple(key_range=slice(64, 70, None), value='big group')]
+        >>> a[8:9]
+        []
+
+    You can also check for the existence of slices. Watch out though:
+    rather than check every value in the slice, it checks for the
+    existence of ANY value in the slice.
+
+        >>> slice(8, 10) in a
+        False
+        >>> slice(7, 10) in a
+        True
+    """
+
+    SliceTuple = namedtuple("SliceTuple", ("key_range", "value"))
+
     def __init__ (self):
+        """No arguments can be given during initialization."""
         self.sorted_list    = [(0, 0, None)]
 
     def __getitem__ (self, key):
+        """Looks up a single key or a slice of keys."""
         # Have a look at the given key.
         if isinstance(key, int_types):
             # Integers are simple; all there is to do is grab the index.
@@ -347,10 +612,11 @@ class RangedList (Mapping):
             if high >= key.stop:
                 # This means the entire slice is contained in this
                 # range. That means we're done.
-                return [(key, value)]
+                return [self.SliceTuple(key, value)]
 
             # Otherwise, we need to keep going.
-            result.append((slice(key.start, high), value))
+            result.append(self.SliceTuple(slice(key.start, high),
+                                          value))
 
         # We're done with this start index. Time to increment it and
         # to find the final index to look at.
@@ -365,16 +631,18 @@ class RangedList (Mapping):
         for low, high, value in self.sorted_list[start:stop]:
             # Beginning with our new start index and stopping before
             # our stop index, we append 2-tuples to our result.
-            result.append((slice(low, high), value))
+            result.append(self.SliceTuple(slice(low, high), value))
 
         # Finally, get the values at the final index.
         low, high, value = self.sorted_list[stop]
-        result.append((slice(low, min(high, key.stop)), value))
+        result.append(self.SliceTuple(slice(low, min(high, key.stop)),
+                                      value))
 
         # Our result list is complete.
         return result
 
     def __contains__ (self, key):
+        """Checks for existence of a key or slice of keys."""
         key = self.key_to_slice(key)
 
         if key.start >= key.stop:
@@ -397,6 +665,7 @@ class RangedList (Mapping):
         return start < self.get_internal_index(key.stop - 1, start)
 
     def __setitem__ (self, key, value):
+        """Assign some values."""
         key = self.key_to_slice(key)
 
         if key.start >= key.stop:
@@ -422,15 +691,19 @@ class RangedList (Mapping):
         raise KeyError("Can't reassign values " + repr(key))
 
     def __len__ (self):
+        """Returns the length as if every value through the largest key
+        were filled."""
         # For our purposes, the length is the slice stop value in the
         # very last section.
         return self.sorted_list[-1][1]
 
     def __iter__ (self):
+        """Iterate over the keys."""
         # Mapping types are supposed to iterate over keys by default.
         return self.keys()
 
     def __repr__ (self):
+        """Represent an instance."""
         slices = [ ]
         for s, v in self.items():
             slices.append("[{:d}:{:d}]: {}".format(s.start,
@@ -441,34 +714,58 @@ class RangedList (Mapping):
                                  ", ".join(slices))
 
     def iterate_sorted_list (func):
+        """Decorator for iteration.
+
+        Functions this decorates should take three arguments and return
+        whatever an iteration will be looking for.
+        """
+
         def result (self):
+            # We'll always be iterating over all three values in our
+            # sorted list.
             for three_tuple in self.sorted_list[1:]:
+                # Yield whatever our particular function returns.
                 yield func(*three_tuple)
 
         return result
 
     @iterate_sorted_list
     def keys (start, stop, value):
+        """Iterate over keys (slices)."""
         return slice(start, stop)
 
     @iterate_sorted_list
     def values (start, stop, value):
+        """Iterate over values."""
         return value
 
     @iterate_sorted_list
     def items (start, stop, value):
+        """Iterate over 2-tuples of keys and values."""
+        # I'd use SliceTuples, but everyone using this should be
+        # familiar with how items() works.
         return (slice(start, stop), value)
 
     def first_after_or_at (self, key):
-        if key in self:
-            return key
-
+        """Return the smallest key greater than or equal to the
+        input."""
         if key >= len(self):
+            # If this key comes after the end, then we have nothing to
+            # return.
             return None
 
-        return self.sorted_list[self.get_internal_index(key) + 1][0]
+        # Look for the key.
+        i = self.get_internal_index(key)
+
+        if key < self.sorted_list[i][1]:
+            # If the key is in the range, return it.
+            return key
+
+        # Otherwise, return the beginning of the next range.
+        return self.sorted_list[i + 1][0]
 
     def key_to_slice (self, key):
+        """Convert a key to an expected slice style."""
         if isinstance(key, slice):
             # It's already a slice! Make sure the step is one, if it's
             # set at all.
@@ -495,6 +792,8 @@ class RangedList (Mapping):
                                 repr(key)))
 
     def get_internal_index (self, x, lo = 0):
+        """Get the largest internal index that could possibly point to a
+        range containing x."""
         if x < 0:
             # If x is negative, well, I don't have a way to handle that.
             raise KeyError("Negative indeces are not allowed (you"
@@ -511,74 +810,54 @@ class RangedList (Mapping):
         return bisect_left(self.sorted_list, (x+1, 0, None), lo) - 1
 
 class TiffIFD (MutableMapping):
-    onlybyte        = set((TiffType.BYTE,))
-    onlyascii       = set((TiffType.ASCII,))
-    onlyshort       = set((TiffType.SHORT,))
-    onlylong        = set((TiffType.LONG,))
-    onlyrational    = set((TiffType.RATIONAL,))
+    """TIFF IFD.
 
-    set_shortlong   = onlyshort | onlylong
-    set_byteshort   = onlybyte  | onlyshort
+    This is pretty much a dictionary of TIFF entries. It's different in
+    a few ways:
 
-    TagInfo         = namedtuple("TagInfo", ("types", "default"))
+    1.  It's sorted. This only matters when iterating. When iterating,
+        the keys are already in sorted order. This is a requirement for
+        a valid TIFF IFD.
 
-    defaults        = {
-        IFDTag.Artist:              TagInfo(onlyascii, None),
-        IFDTag.BitsPerSample:       TagInfo(onlyshort, True),
-        IFDTag.CellLength:          TagInfo(onlyshort, None),
-        IFDTag.CellWidth:           TagInfo(onlyshort, None),
-        IFDTag.ColorMap:            TagInfo(onlyshort, None),
-        IFDTag.Compression:         TagInfo(onlyshort,
-                                        IFDCompression.uncompressed),
-        IFDTag.Copyright:           TagInfo(onlyascii, None),
-        IFDTag.DateTime:            TagInfo(onlyascii, None),
-        IFDTag.ExtraSamples:        TagInfo(onlyshort, None),
-        IFDTag.FillOrder:           TagInfo(onlyshort,
-                                        IFDFillOrder.LeftToRight),
-        IFDTag.FreeByteCounts:      TagInfo(onlylong, None),
-        IFDTag.FreeOffsets:         TagInfo(onlylong, None),
-        IFDTag.GrayResponseCurve:   TagInfo(onlyshort, None),
-        IFDTag.GrayResponseUnit:    TagInfo(onlyshort, 2),
-        IFDTag.HostComputer:        TagInfo(onlyascii, None),
-        IFDTag.ImageDescription:    TagInfo(onlyascii, None),
-        IFDTag.ImageLength:         TagInfo(set_shortlong, None),
-        IFDTag.ImageWidth:          TagInfo(set_shortlong, None),
-        IFDTag.Make:                TagInfo(onlyascii, None),
-        IFDTag.MaxSampleValue:      TagInfo(onlyshort, True),
-        IFDTag.MinSampleValue:      TagInfo(onlyshort, True),
-        IFDTag.Model:               TagInfo(onlyascii, None),
-        IFDTag.NewSubfileType:      TagInfo(onlylong, 0),
-        IFDTag.Orientation:         TagInfo(onlyshort,
-                                        IFDOrientation.normal),
-        IFDTag.PhotometricInterpretation: TagInfo(onlyshort, None),
-        IFDTag.PlanarConfiguration: TagInfo(onlyshort,
-                                        IFDPlanarConfiguration.Chunky),
-        IFDTag.ResolutionUnit:      TagInfo(onlyshort,
-                                        IFDResolutionUnit.Inch),
-        IFDTag.RowsPerStrip:        TagInfo(set_shortlong, 0xffffffff),
-        IFDTag.SamplesPerPixel:     TagInfo(onlyshort, 1),
-        IFDTag.Software:            TagInfo(onlyascii, None),
-        IFDTag.StripByteCounts:     TagInfo(set_shortlong, None),
-        IFDTag.StripOffsets:        TagInfo(onlylong, None),
-        IFDTag.SubfileType:         TagInfo(onlyshort, None),
-        IFDTag.Thresholding:        TagInfo(onlyshort,
-                                        IFDThresholding.Nothing),
-        IFDTag.XResolution:         TagInfo(onlyrational, None),
-        IFDTag.YResolution:         TagInfo(onlyrational, None),
+    2.  Any number of fields can be marked as "required." These fields
+        will always come up during iteration (and in length
+        calculation), even though attempts to access their values will
+        result in KeyErrors.
+
+    3.  It stores a number of default values. If you set anything to its
+        default, then it's value won't actually be stored, and it will
+        only be part of iteration if it's required.
+    """
+
+    # Here are default values.
+    defaults            = {
+        IFDTag.NewSubfileType:      0,
+        IFDTag.Compression:         IFDCompression.uncompressed,
+        IFDTag.FillOrder:           IFDFillOrder.LeftToRight,
+        IFDTag.GrayResponseUnit:    2,
+        IFDTag.NewSubfileType:      0,
+        IFDTag.Orientation:         IFDOrientation.normal,
+        IFDTag.PlanarConfiguration: IFDPlanarConfiguration.Chunky,
+        IFDTag.ResolutionUnit:      IFDResolutionUnit.Inch,
+        IFDTag.RowsPerStrip:        0xffffffff,
+        IFDTag.SamplesPerPixel:     1,
+        IFDTag.Thresholding:        IFDThresholding.Nothing,
     }
 
-    required_tags   = set((
+    # These tags are absolutely required in every IFD.
+    always_required     = set((
         IFDTag.ImageWidth,
         IFDTag.ImageLength,
-        IFDTag.BitsPerSample,
-        IFDTag.Compression,
+        #IFDTag.BitsPerSample,
+        #IFDTag.Compression,
         IFDTag.PhotometricInterpretation,
         IFDTag.StripOffsets,
-        IFDTag.Orientation,
-        IFDTag.SamplesPerPixel,
+        #IFDTag.Orientation,
+        #IFDTag.SamplesPerPixel,
         IFDTag.StripByteCounts,
     ))
 
+    # This exists as a hierarchy of tag default dependencies.
     tag_dependencies    = {
         IFDTag.SamplesPerPixel: (
             IFDTag.BitsPerSample,
@@ -590,30 +869,70 @@ class TiffIFD (MutableMapping):
         ),
     }
 
+    # This is a list of tags with more complicated default values than
+    # can be expressed in the defaults dictionary, since their defaults
+    # depend on other values.
     complex_defaults    = set()
-    for tag, info in defaults.items():
-        if info.default is True:
-            complex_defaults.add(tag)
+    for tags in tag_dependencies.values():
+        complex_defaults.update(tags)
 
-    def __init__ (self, base_dict = { }):
-        # I have an internal dictionary.
+    def __init__ (self, *args, **kwargs):
+        """Initialize TIFF IFD.
+
+        You can pass any number of arguments:
+
+        -   Nonkeyworded dictionaries will be updated in as entries.
+
+        -   Other nonkeyworded containers will be treated as lists of
+            new required tags.
+
+        -   Nonkeyworded noncontainers will be treated as new required
+            tags.
+
+        -   Keyworded arguments will be updated in as entries.
+        """
+
+        # I have an internal dictionary and a sorted list of tags.
         self.internal_dict  = { }
-
-        # I also want an always-sorted list of tags.
         self.ordered_tags   = [ ]
 
+        # Let's initialize our particular list of required tags.
+        self.required_tags  = set(self.always_required)
+
         for tag in self.required_tags:
-            # Check all the known tags to see if they have a default
-            # value.
-            #if self.get_default(tag) is not None:
+            # Add every required tag to our ordered list. These are
+            # always here, guaranteeing a failure on iteration for any
+            # that remain unset (and that have no default).
             insort_left(self.ordered_tags, tag)
 
-        for tag, value in base_dict.items():
-            # If we've been given a dictionary to base ourselves on, go
-            # ahead and load it on in.
-            self[tag] = value
+        for base_dict in args + (kwargs,):
+            if isinstance(base_dict, Mapping):
+                # We have a dictionary. Update with it.
+                self.update(base_dict)
+
+            else:
+                # Otherwise, we're probably adding required tags.
+                self.add_required_tags(base_dict)
+
+    def __bool__ (self):
+        """Check validity
+
+        Returns true if the IFD has stored values for each required tag.
+        Otherwise returns false. If this returns true, it is safe to
+        iterate over values.
+        """
+
+        for tag in self:
+            # Check whether each tag is actually here.
+            if tag not in self:
+                # If even one tag is not here, this is not a valid IFD.
+                return False
+
+        # Every tag was present. We're valid!
+        return True
 
     def __getitem__ (self, key):
+        """Read an entry"""
         if key not in self.internal_dict:
             # If this key isn't in the dictionary, see if it has a
             # default value.
@@ -629,6 +948,7 @@ class TiffIFD (MutableMapping):
         return self.internal_dict[key]
 
     def __setitem__ (self, key, value):
+        """Set or update an entry"""
         if not isinstance(value, (bytes, str, list, tuple)):
             # We've been given a single value. We deal in lists of size
             # 1 (never just single values).
@@ -658,12 +978,14 @@ class TiffIFD (MutableMapping):
             del self.internal_dict[key]
 
         # If anything depends on this value, fix it, just in case.
-        self.fix_dependent_tags(key)
+        self.fix_dependent_tags_if_any(key)
 
     def __delitem__ (self, key):
+        """Remove an entry."""
         if key in self.internal_dict or self.get_default(key) is None:
             # Delete it if it's there. Also attempt to delete it if it
-            # doesn't have a default value.
+            # doesn't have a default value. If it's not there and has no
+            # default, then, naturally, this will raise a KeyError.
             del self.internal_dict[key]
 
             if key not in self.required_tags:
@@ -674,36 +996,52 @@ class TiffIFD (MutableMapping):
                                                   key)]
 
         # If anything depends on this value, fix it, just in case.
-        self.fix_dependent_tags(key)
+        self.fix_dependent_tags_if_any(key)
 
     def __iter__ (self):
+        """Iterate through entries in tag order"""
         # Our keys are our ordered tag list. TIFFs require that they be
         # in order, so there it is.
         return iter(self.ordered_tags)
 
     def __len__ (self):
+        """Count entries.
+
+        Note that there may be entries that are not counted; this will
+        not count entries that are set to their defaults (unless they
+        are required).
+        """
+
         # Our length should match the count of tags we'll actually
         # iterate on.
         return len(self.ordered_tags)
 
     def __contains__ (self, key):
+        """Check whether we have an entry with this tag"""
         return key in self.internal_dict or \
                 self.get_default(key) is not None
 
     def __repr__ (self):
+        """Represent an IFD"""
         pairs = [ ]
-        for i, j in self.items():
-            pairs.append("{:d}: {}".format(i, repr(j)))
+        for tag in self:
+            if tag in self:
+                value = repr(self[tag])
+            else:
+                value = "None"
+
+            pairs.append("{:d}: {}".format(tag, value))
 
         return "<{}: {}>".format(self.__class__.__name__,
                                  ", ".join(pairs))
 
     def __str__ (self):
+        """Dump an IFD all pretty"""
         result = "{}:".format(self.__class__.__name__)
 
         for tag, value in self.items():
-            result += "\n  {:4x} {:>27s}: ".format(tag,
-                        TiffTagNameDict[tag])
+            result += "\n  {:4x} {:>28s}: ".format(tag,
+                        TiffTagNameDict.get(tag, "(unknown)"))
 
             if isinstance(value, (str, bytes)):
                 result += repr(value)
@@ -719,11 +1057,65 @@ class TiffIFD (MutableMapping):
             result += transform(value[0])
 
             for another in value[1:]:
-                result += "\n" + " " * 36 + transform(another)
+                result += "\n" + " " * 37 + transform(another)
 
         return result
 
-    def fix_dependent_tags (self, key):
+    def add_required_tags (self, *args):
+        """Add required tags.
+
+        You can give any number of arguments. Arguments can be
+        containers of required tags or required tags themselves.
+        """
+
+        for arg in args:
+            # Check each argument to see if it's a container.
+            if isinstance(arg, Iterable):
+                # If it is, run recursively.
+                for i in arg:
+                    self.add_required_tags(i)
+
+            else:
+                # It's not a container, so we can just add it.
+                if arg not in self.required_tags:
+                    # We only need to add it if it's not already there.
+                    if arg not in self.internal_dict:
+                        # We only need to add it to our ordered tag list
+                        # if it's not already there.
+                        insort_left(self.ordered_tags, arg)
+
+                    # Either way though, since it's not already here, it
+                    # needs to be put here.
+                    self.required_tags.add(arg)
+
+    def add_unrequired_tag (self, *args):
+        """Remove required tags.
+
+        You can give any number of arguments. Arguments can be
+        containers of required tags or required tags themselves.
+        """
+
+        for arg in args:
+            if isinstance(arg, Iterable):
+                # It's an iterable! Iterate through it!
+                for i in arg:
+                    self.add_unrequired_tag(i)
+
+            else:
+                # It's a real argument.
+                if arg in self.required_tags:
+                    # And we actually will have to remove it!
+                    if arg not in self.internal_dict:
+                        # It's not even in the internal dictionary, so
+                        # yeah get it get it gone!
+                        del self.ordered_tags[
+                                bisect_left(self.ordered_tags, arg)]
+
+                    # Don't forget to actually delete it!
+                    self.required_tags.discard(arg)
+
+    def fix_dependent_tags_if_any (self, key):
+        """Handle complex defaults"""
         # NB This method works only because of an assumption about order
         # of assignment that you should be aware of, if you're messing
         # with any of this:
@@ -749,6 +1141,14 @@ class TiffIFD (MutableMapping):
                 self[tag] = self[tag]
 
     def get_default (self, tag, be_safe = False):
+        """Get the default value if any.
+
+        This returns None if there is no default value. Otherwise, it
+        returns the exact default value. This won't raise any errors.
+
+        This is meant to be used internally; you'd probably rather just
+        access items the usual way.
+        """
         if tag in self.complex_defaults:
             if tag == IFDTag.BitsPerSample:
                 # The default BPS is 1, and we need an array such that
@@ -773,30 +1173,37 @@ class TiffIFD (MutableMapping):
         if tag in self.defaults:
             # This one isn't special. I must have something in the
             # array.
-            value = self.defaults[tag].default
+            value = self.defaults[tag]
 
             if isinstance(value, (bytes, str, tuple, list)):
                 # If it's a string, just return it.
                 return value
 
-            if value is not None and value is not True:
+            if value is not None:
                 # Otherwise, it's an array with length 1.
                 return [value]
 
         # Otherotherwise, I got nothing.
         return None
 
-class Tiff:
-    # Bytes are base 256.
-    byte_base               = 0x100
+class Tiff (Sequence):
+    """Tiff Container
 
+    Once initialized, this is little more than a non-mutable sequence of
+    IFDs. It takes in an open "rb" file stream, reads what it can, and
+    becomes that sequence (or raises a TiffError if it can't).
+    """
+
+    # The first two bytes of the tiff must be in here.
     expected_byte_orders    = {
         b"II":  "little",
         b"MM":  "big",
     }
 
+    # The second two bytes of the tiff must be this integer.
     magic_check_number      = 42
 
+    # These are the types that have a sign bit.
     signed_types            = set((
         TiffType.SBYTE,
         TiffType.SSHORT,
@@ -804,47 +1211,59 @@ class Tiff:
         TiffType.SRATIONAL,
     ))
 
+    # These pairs all are lists of 
     strip_tags              = (
-        # StripOffsets and StripByteCounts
-        (0x111, 0x117),
-
-        # FreeOffsets and FreeByteCounts
-        (0x120, 0x121),
+        (IFDTag.StripOffsets,   IFDTag.StripByteCounts),
+        (IFDTag.FreeOffsets,    IFDTag.FreeByteCounts),
+        (IFDTag.TileOffsets,    IFDTag.TileByteCounts),
     )
 
-    NUL                     = b"\0"
-
     class TiffError (Exception):
+        """TiffError
+
+        The purpose of this class is to display an error message along
+        with an approximate relevant location inside the tiff.
+        """
+
         def __init__ (self, position, message):
+            """Initialize with a position and a message"""
             # Every tiff error comes with a position inside the tiff and
             # an error message.
             self.position   = position
             self.message    = message
 
         def __str__ (self):
+            """Display the message and position"""
             # And here's how we display the error by default.
             return "{msg} (0x{pos:08x})".format(
                     pos = self.position,
                     msg = str(self.message))
 
-    class Err (Exception):
-        # I use this as a quick-and-dirty exception that will be fed to
-        # the more clear exception classes.
-        pass
-
+    # These are just named tuples. If you don't know what that means,
+    # then all you have to know is that these are tuples with more
+    # features that you probably don't care about.
     OutOfOrderEntry     = namedtuple("OutOfOrderEntry",
                             ("ifd", "tag", "prev_max"))
     UnknownTypeEntry    = namedtuple("UnknownTypeEntry",
                             ("ifd", "tag", "code", "offset"))
     InvalidStringEntry  = namedtuple("InvalidStringEntry",
                             ("ifd", "tag", "suggestions"))
-    IFDEntry            = namedtuple("IFDEntry",
-                            ("value", "tifftype", "offset"))
 
     def __init__ (self, file_object):
+        """Initialize from a file object with mode 'rb'"""
         if not isinstance(file_object, BufferedReader):
             # Assert that we have an "rb" file.
             raise TypeError("Expected a file with mode 'rb'")
+
+        # This is a list of named 3-tuples, defined by OutOfOrderEntry.
+        self.out_of_order_ifds  = [ ]
+
+        # This is a list of named 4-tuples, defined by UnknownTypeEntry.
+        self.unknown_types      = [ ]
+
+        # This is a list of named 3-tuples, defined by
+        # InvalidStringEntry.
+        self.invalid_strings    = [ ]
 
         # We should start at the beginning.
         file_object.seek(0)
@@ -866,16 +1285,22 @@ class Tiff:
         self.ifds       = self.internalize_ifds(simple_ifds)
 
     def __getitem__ (self, key):
+        """Get an IFD"""
         return self.ifds[key]
 
     def __len__ (self):
+        """Get a count of IFDs"""
         return len(self.ifds)
 
-    def __iter__ (self):
-        for ifd in self.ifds:
-            yield ifd
-
     def read_header (self):
+        """Read the tiff header.
+
+        This reads the first eight bytes of the tiff. It discerns byte
+        order, validates the magic number, and locates the offset of the
+        first IFD. The byte order is set in self.byte_order; the first
+        IFD offset is returned.
+        """
+
         try:
             # Try to get the byte order.
             self.byte_order = self.expected_byte_orders[self.read(2)]
@@ -913,10 +1338,9 @@ class Tiff:
         return ifd_offset
 
     def read_ifds (self, ifd_offset):
-        # We'll be collecting IFDs as well as info about problem
-        # entries.
+        """Read the IFDs from the tiff without interpretation"""
+        # We'll be collecting IFDs into a list.
         ifds                    = [ ]
-        self.out_of_order_ifds  = [ ]
 
         while ifd_offset != 0:
             # Go to the IFD and read the entry count.
@@ -983,13 +1407,23 @@ class Tiff:
         return ifds
 
     def internalize_ifds (self, simple_ifds):
-        # We'll be returning a more-complicated list of IFDs.
-        ifds                    = [ ]
-        offsets                 = { }
+        """Interpret the IFDs.
 
-        # I'll keep track of unknown types and invalid strings.
-        self.unknown_types      = [ ]
-        invalid_strings         = [ ]
+        This reads the IFDs a second time from a list of dictionaries.
+        Unlike the first time, it'll actually interpret the values it
+        finds and try to convert them to python values.
+        """
+
+        # We'll be returning a more-complicated list of IFDs.
+        ifds            = [ ]
+
+        # This is just for now, to track the offsets of particular
+        # entries within the tiff file. After this function completes,
+        # I'll be discarding this information.
+        offsets         = { }
+
+        # I'll keep track of invalid strings.
+        invalid_strings = [ ]
 
         for simple_entries in simple_ifds:
             # We'll construct a new entry dictionary.
@@ -1032,7 +1466,7 @@ class Tiff:
                     value       = value[:length]
 
                     if valtype.tifftype == TiffType.ASCII:
-                        if value[-1] == 0:
+                        if value[-1] in (0, b"\0"):
                             # If it's a valid string, strip the trailing
                             # NUL byte.
                             value = value[:-1]
@@ -1108,6 +1542,14 @@ class Tiff:
         return ifds
 
     def add_strip_bytes (self, ifds, offset_dict):
+        """Add remaining bytes from file
+
+        Bytes have been accounted for from the tiff header, each IFD,
+        and each overlarge entry within the IFDs. All that's left is to
+        handle those entries which always refer to offsets and
+        bytecounts.
+        """
+
         for ifd_number, ifd in enumerate(ifds):
             # For each IFD, check the known strip tags.
             for offset, length in self.strip_tags:
@@ -1144,6 +1586,19 @@ class Tiff:
                                                       strip_i))
 
     def try_to_fix_strings (self, ifds, invalid_strings):
+        """Try to fix invalid strings.
+
+        For the most part, each invalid string is probably just exactly
+        right except for lacking the zero byte. All the same, it's not a
+        bad idea to collect possibilities, since I know exactly which
+        bytes in the file are accounted for.
+
+        This returns a list of 3-tuples, defined by InvalidStringEntry.
+        The third value will be either a list of suggestions or a single
+        string. In that last case, the string will match the string in
+        the IFD. It means I'm rather sure it's correct.
+        """
+
         # We'll return the same list but with suggestions this time.
         with_suggestions = [ ]
 
@@ -1189,7 +1644,7 @@ class Tiff:
                     full += self.read(nextpos - pos)
 
             # Search for a NUL byte.
-            index = full.find(self.NUL)
+            index = full.find(b"\0")
             while index != -1:
                 # We found one! That means we have an alternate guess.
                 guess   = full[:index]
@@ -1204,7 +1659,7 @@ class Tiff:
                 # Otherwise, add this guess to the suggestion list. See
                 # if we can find another NUL byte.
                 suggestions.append(guess)
-                index = full.find(self.NUL, index + 1)
+                index = full.find(b"\0", index + 1)
 
             if suggestions is None:
                 # We found a valid string that matches the one given
@@ -1213,7 +1668,7 @@ class Tiff:
                 # main guess again, to reinforce its probability.
                 suggestions = entry
 
-            elif strlen < len(full) and full[-1] != self.NUL:
+            elif strlen < len(full) and full[-1] != b"\0":
                 # Otherwise, we have a list of suggestions. If our new
                 # "full" string is indeed longer than the main guess,
                 # then we should probably add it to the suggestion list.
@@ -1229,10 +1684,18 @@ class Tiff:
         return with_suggestions
 
     def add_bytes (self, start, length, value):
+        """Account for bytes in the tiff file"""
         # This is just a shortcut for a commonly-run thing.
         self.tiff_bytes[start:start + length] = value
 
     def read (self, length = None):
+        """Read bytes from the tiff file.
+
+        This is just a simple filestream read, except that it raises an
+        exception rather than return an unexpected count of bytes. It is
+        useful in detecting unexpected end-of-file markers.
+        """
+
         if length is None:
             # If no length is given, then there'll be no need for
             # anything fancy. Just return a full read.
@@ -1250,10 +1713,12 @@ class Tiff:
         return result
 
     def read_int (self, length):
+        """Read an integer from the tiff file"""
         # This is a shortcut for reading in an int from the tiff.
         return self.bytes_to_int(self.read(length))
 
     def raise_error (self, pos, message = None):
+        """Raise a TiffError"""
         if message is None:
             # It's actually the position that I want to be optional. If
             # there's no position, correctly label the message, and get
@@ -1273,12 +1738,15 @@ class Tiff:
         raise self.TiffError(pos, message)
 
     def int_to_bytes (self, integer, length):
+        """Convert int to bytes"""
         return int_to_bytes(integer, length, self.byte_order)
 
     def bytes_to_int (self, bytestring):
+        """Convert bytes to int"""
         return bytes_to_int(bytestring, self.byte_order)
 
     def bytes_to_sint (self, bytestring):
+        """Convert bytes to signed int"""
         # We'll get the unsigned result, and we'll calculate the
         # smallest integer too large to fit in this bytestring's length.
         result      = self.bytes_to_int(bytestring)
@@ -1294,6 +1762,8 @@ class Tiff:
         return result - one_more
 
     def general_bytes_to_rational (self, bytestring, to_int):
+        """Convert bytes to rational using a passed bytes to int
+        converter"""
         # Rather than look anything up, just go ahead and take half.
         numlength   = len(bytestring) // 2
 
@@ -1302,21 +1772,24 @@ class Tiff:
                         to_int(bytestring[numlength:]))
 
     def bytes_to_rational (self, bytestring):
+        """Convert bytes to unsigned Fraction"""
         return self.general_bytes_to_rational(bytestring,
                                               self.bytes_to_int)
 
     def bytes_to_srational (self, bytestring):
+        """Convert bytes to signed Fraction"""
         return self.general_bytes_to_rational(bytestring,
                                               self.bytes_to_sint)
 
     def bytes_to_float (self, bytestring):
+        """Convert bytes to float using IEEE 754 specs"""
         # The length of the bytestring matters.
         bytecount   = len(bytestring)
 
         if bytecount not in IEEE_754_Parameters:
             # If we don't know how to handle a float of this size, we
             # give up.
-            raise self.Err("I don't know how to make a float {:d}" \
+            self.raise_error("I don't know how to make a float {:d}" \
                     " byte{} long".format(bytecount,
                         "" if bytecount == 1 else "s"))
 
@@ -1547,6 +2020,12 @@ class TestTiff (unittest.TestCase):
 
     def setUp (self):
         self.tiff_obj = Tiff(BufferedReader(BytesIO(self.tinytiff)))
+        for ifd in self.tiff_obj:
+            ifd.add_required_tags(
+                    IFDTag.BitsPerSample,
+                    IFDTag.Compression,
+                    IFDTag.Orientation,
+                    IFDTag.SamplesPerPixel)
 
     def test_file_is_mode_rb (self):
         # Be sure we won't accept any files that aren't binary
