@@ -5,6 +5,7 @@ from bisect         import  bisect_left, insort_left
 from collections    import  namedtuple, Mapping, MutableMapping, \
                             Sequence, Iterable
 from fractions      import  Fraction
+from generic        import  FileReader
 from io             import  BytesIO, BufferedReader
 from itertools      import  count
 from numpy          import  nan as NaN, inf as infinity
@@ -471,7 +472,7 @@ class Float:
         Fraction and the exponent:
 
             >>> Float(1, 2, 3)
-            <Float 2**(3) * 1 / 2>
+            <Float 2**(3) * 1/2>
             >>> float(Float(1, 2, 3))
             4.0
             >>> float(Float(1, 2, 100))
@@ -493,7 +494,7 @@ class Float:
 
     def __repr__ (self):
         """Represent an instance."""
-        return "<{} 2**({:d}) * {:d} / {:d}>".format(
+        return "<{} 2**({:d}) * {:d}/{:d}>".format(
                 self.__class__.__name__,
                 self.exponent,
                 self.fraction.numerator,
@@ -509,9 +510,9 @@ class RangedList (Mapping):
         >>> a[32]       = "single value"
         >>> a[64:128]   = "big group"
         >>> a
-        <RangedList: [0:8]:     'first eight',
-                     [32:33]:   'single value',
-                     [64:128]:  'big group'>
+        <RangedList [0:8]:    'first eight',
+                    [32:33]:  'single value',
+                    [64:128]: 'big group'>
 
     It supports everything you would expect from a mutable mapping
     except that values cannot be destroyed or modified. Length is based
@@ -710,8 +711,8 @@ class RangedList (Mapping):
                                                    s.stop,
                                                    repr(v)))
 
-        return "<{}: {}>".format(self.__class__.__name__,
-                                 ", ".join(slices))
+        return "<{} {}>".format(self.__class__.__name__,
+                                ", ".join(slices))
 
     def iterate_sorted_list (func):
         """Decorator for iteration.
@@ -1030,10 +1031,10 @@ class TiffIFD (MutableMapping):
             else:
                 value = "None"
 
-            pairs.append("{:d}: {}".format(tag, value))
+            pairs.append("{:d}={}".format(tag, value))
 
-        return "<{}: {}>".format(self.__class__.__name__,
-                                 ", ".join(pairs))
+        return "<{} {}>".format(self.__class__.__name__,
+                                ", ".join(pairs))
 
     def __str__ (self):
         """Dump an IFD all pretty"""
@@ -1251,9 +1252,8 @@ class Tiff (Sequence):
 
     def __init__ (self, file_object):
         """Initialize from a file object with mode 'rb'"""
-        if not isinstance(file_object, BufferedReader):
-            # Assert that we have an "rb" file.
-            raise TypeError("Expected a file with mode 'rb'")
+        if not isinstance(file_object, FileReader):
+            file_object = FileReader(file_object)
 
         # This is a list of named 3-tuples, defined by OutOfOrderEntry.
         self.out_of_order_ifds  = [ ]
@@ -1264,9 +1264,6 @@ class Tiff (Sequence):
         # This is a list of named 3-tuples, defined by
         # InvalidStringEntry.
         self.invalid_strings    = [ ]
-
-        # We should start at the beginning.
-        file_object.seek(0)
 
         # Store the file object, and initialize a ranged list.
         self.tiff       = file_object
@@ -1301,6 +1298,9 @@ class Tiff (Sequence):
         IFD offset is returned.
         """
 
+        # We should start at the beginning.
+        self.tiff.seek(0)
+
         try:
             # Try to get the byte order.
             self.byte_order = self.expected_byte_orders[self.read(2)]
@@ -1322,7 +1322,7 @@ class Tiff (Sequence):
         # Cool. Next is the IFD offset. How many bytes have we read so
         # far? (The answer is absolutely going to be 8.)
         ifd_offset                      = self.read_int(4)
-        header_length                   = self.tiff.tell()
+        header_length                   = self.tiff.pos()
 
         if ifd_offset < header_length:
             # Be sure the offset doesn't point to anywhere in the tiff
@@ -1366,7 +1366,7 @@ class Tiff (Sequence):
                 # No need to get fancy just yet; for now, we're just
                 # grabbing what we can find within the IFD. We'll start
                 # following offsets and interpreting things later.
-                offset          = self.tiff.tell()
+                offset          = self.tiff.pos()
                 tag             = self.read_int(2)
                 valtype         = self.read_int(2)
                 listlen         = self.read_int(4)
@@ -1454,7 +1454,7 @@ class Tiff (Sequence):
 
                     # Before we actually read anything for real, add the
                     # bytes to our ranged list.
-                    self.add_bytes(self.tiff.tell(),
+                    self.add_bytes(self.tiff.pos(),
                                    length,
                                    (len(ifds), tag, None))
 
@@ -1629,7 +1629,7 @@ class Tiff (Sequence):
                 full    = self.read(strlen)
 
                 # Where are we? Where are we going?
-                pos     = self.tiff.tell()
+                pos     = self.tiff.pos()
                 nextpos = self.tiff_bytes.first_after_or_at(pos)
 
                 if nextpos is None:
@@ -1696,21 +1696,7 @@ class Tiff (Sequence):
         useful in detecting unexpected end-of-file markers.
         """
 
-        if length is None:
-            # If no length is given, then there'll be no need for
-            # anything fancy. Just return a full read.
-            return self.tiff.read()
-
-        # Read in the bytes.
-        result = self.tiff.read(length)
-
-        if len(result) < length:
-            # If we didn't pull in as many as we expected, we've reached
-            # an unexpected EOF.
-            self.raise_error("Unexpected EOF")
-
-        # Otherwise, pass it on down.
-        return result
+        return self.tiff.read(length)
 
     def read_int (self, length):
         """Read an integer from the tiff file"""
@@ -1719,23 +1705,7 @@ class Tiff (Sequence):
 
     def raise_error (self, pos, message = None):
         """Raise a TiffError"""
-        if message is None:
-            # It's actually the position that I want to be optional. If
-            # there's no position, correctly label the message, and get
-            # the position from the file.
-            message = pos
-            pos     = self.tiff.tell()
-
-        if pos < 0:
-            # If the position is a relative negative, add the actual
-            # position.
-            pos    += self.tiff.tell()
-
-        # Let's be nice and close the file.
-        self.tiff.close()
-
-        # Yayyy!
-        raise self.TiffError(pos, message)
+        return self.tiff.error(pos, message)
 
     def int_to_bytes (self, integer, length):
         """Convert int to bytes"""
@@ -2040,7 +2010,7 @@ class TestTiff (unittest.TestCase):
         eof = "Unexpected EOF"
 
         for i in (0, 2, 4, 8, 32, -1):
-            with self.assertRaisesRegex(Tiff.TiffError, eof):
+            with self.assertRaisesRegex(FileReader.ReadError, eof):
                 tiff = Tiff(BufferedReader(BytesIO(self.tinytiff[:i])))
 
     def test_invalid_byte_orders (self):
@@ -2052,7 +2022,7 @@ class TestTiff (unittest.TestCase):
             while randbytes in valid:
                 randbytes = int_to_bytes(randrange(0x10000), 2, "big")
 
-            with self.assertRaisesRegex(Tiff.TiffError,
+            with self.assertRaisesRegex(FileReader.ReadError,
                     r"Unknown byte order: .*0x00000000"):
                 tiff = Tiff(BufferedReader(BytesIO(randbytes)))
 
@@ -2068,7 +2038,7 @@ class TestTiff (unittest.TestCase):
                 while j == 42:
                     j = randrange(0x10000)
 
-                with self.assertRaisesRegex(Tiff.TiffError, regex(j)):
+                with self.assertRaisesRegex(FileReader.ReadError, regex(j)):
                     tiff = Tiff(BufferedReader(BytesIO(
                                 head + int_to_bytes(j, 2, order))))
 
@@ -2077,19 +2047,19 @@ class TestTiff (unittest.TestCase):
     def test_ifd_min (self):
         regex   = r"IFD offset must be at least 8; you gave me {:d}"
         for i in range(8):
-            with self.assertRaisesRegex(Tiff.TiffError,
+            with self.assertRaisesRegex(FileReader.ReadError,
                     regex.format(i)):
                 tiff = Tiff(BufferedReader(BytesIO(self.tinytiff[:4]
                             + int_to_bytes(i, 4, "little"))))
 
     def test_ifd_entry_count (self):
-        with self.assertRaisesRegex(Tiff.TiffError,
+        with self.assertRaisesRegex(FileReader.ReadError,
                 r"IFD0 must have at least one entry .0x00000008"):
             tiff = Tiff(BufferedReader(BytesIO(self.tinytiff[:8]
                         + b"\0\0")))
 
     def test_ifd_no_duplicate_entries (self):
-        with self.assertRaisesRegex(Tiff.TiffError,
+        with self.assertRaisesRegex(FileReader.ReadError,
                 r"Tag 256 \(0x100\) is already in IFD0;" \
                 r" no duplicates allowed .0x00000016"):
             tiff = Tiff(BufferedReader(BytesIO(self.tinytiff[:0x16]
