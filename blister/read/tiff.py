@@ -5,11 +5,13 @@ from bisect         import  bisect_left, insort_left
 from collections    import  namedtuple, Mapping, MutableMapping, \
                             Sequence, Iterable
 from fractions      import  Fraction
-from generic        import  FileReader
 from io             import  BytesIO, BufferedReader
 from itertools      import  count
 from numpy          import  nan as NaN, inf as infinity
 from random         import  randrange
+
+from blister.read.generic import FileReader, int_to_bytes, \
+                            bytes_to_int, hex_to_bytes
 import unittest
 
 ########################################################################
@@ -22,31 +24,6 @@ import unittest
 
 #int_types = (int, long)
 int_types = int
-
-def int_to_bytes (integer, length, byte_order):
-    #result = ""
-    #while integer > 0:
-        #result += chr(integer % 0x100)
-        #integer //= 0x100
-    #result += "\0" * (length - len(result))
-    #if byte_order == "big":
-        #return result[::-1]
-    #return result
-    return integer.to_bytes(length, byte_order)
-
-def bytes_to_int (bytestring, byte_order):
-    #if byte_order == "little":
-        #bytestring = bytestring[::-1]
-    #result = 0
-    #for byte in bytestring:
-        #result *= 0x100
-        #result += ord(byte)
-    #return result
-    return int.from_bytes(bytestring, byte_order)
-
-def hex_to_bytes (hexstring):
-    #return hexstring.replace(" ", "").decode("hex")
-    return bytes.fromhex(hexstring)
 
 ########################################################################
 ############################# TIFF Classes #############################
