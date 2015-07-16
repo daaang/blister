@@ -1,11 +1,78 @@
-class BlisterException (Exception):
-    pass
+# Copyright (c) 2015 The Regents of the University of Michigan.
+# All Rights Reserved. Licensed according to the terms of the Revised
+# BSD License. See LICENSE.txt for details.
 
-class FileReadError (BlisterException):
-    def __init__ (self, position, message):
-        self.position   = position
-        self.message    = message
+class BlisterBaseError (Exception):
+    """Root for all Blister errors.
+
+    Note:
+        This is meant to never be raised directly. Only its descendents
+        will be raised; this is meant only to be caught.
+
+    Examples:
+        For the sake of clarity, all child exceptions default to showing
+        the docstring if ever converted to strings.
+
+        >>> class MyBlisterError (BlisterBaseError):
+        ...     '''Quick description of this subclass.'''
+        ...     pass
+        ... 
+        >>> raise MyBlisterError
+        Traceback (most recent call last):
+          File "<stdin>", line 1, in <module>
+        MyBlisterError: Quick description of this subclass.
+
+    """
+
+    def __repr__ (self):
+        # Assume the child exception class has implemented its own
+        # __str__ method. If not, this'll look much the same as any
+        # other python exception.
+        return "{}({})".format(self.__class__.__name__, repr(str(self)))
 
     def __str__ (self):
-        return "{} (0x{:08x})".format(str(self.message),
-                                      self.position)
+        # By default, let's just keep our docstrings short.
+        return self.__doc__
+
+class FileReadError (BlisterBaseError):
+    """File Read Error
+
+    Something unexpected has happened while reading a file.
+
+    Note:
+        This is meant to never be raised directly. Only its descendents
+        will be raised; this is meant only to be caught.
+
+    Args:
+        position (int):     The byte in the file.
+
+    Examples:
+        >>> two_fifty_six = UnexpectedEOF(256)
+        >>> two_fifty_six
+        UnexpectedEOF('Unexpected end of file. (0x00000100)')
+        >>> str(two_fifty_six)
+        'Unexpected end of file. (0x00000100)'
+        >>> raise two_fifty_six
+        Traceback (most recent call last):
+          File "<stdin>", line 1, in <module>
+        UnexpectedEOF: Unexpected end of file. (0x00000100)
+
+        As you can see, the message is already set, and the output
+        contains an eight-digit hexadecimal pointing (in theory) to the
+        exact byte in the file where the problem occurred.
+
+    """
+
+    def __init__ (self, position):
+        # All I want to actually take in is a positional argument; the
+        # message should be set by the child class.
+        self.position = position
+
+    def __str__ (self):
+        # After displaying the message, display the relevant position in
+        # the file.
+        return "{} (0x{:08x})".format(self.__doc__, self.position)
+
+class UnexpectedEOF (FileReadError):
+    """Unexpected end of file."""
+    pass
