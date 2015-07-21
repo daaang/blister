@@ -2,7 +2,6 @@
 # All Rights Reserved. Licensed according to the terms of the Revised
 # BSD License. See LICENSE.txt for details.
 from .exceptions import BlisterBaseError, FileReadError, UnexpectedEOF
-import read
 
 __all__ = [
     "read",

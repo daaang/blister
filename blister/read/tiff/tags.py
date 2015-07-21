@@ -1,3 +1,8 @@
+# Copyright (c) 2015 The Regents of the University of Michigan.
+# All Rights Reserved. Licensed according to the terms of the Revised
+# BSD License. See LICENSE.txt for details.
+from ...internal.backways_map import make_backways_map
+
 class IFDTag:
     """IFD tags by name"""
     NewSubfileType              = 0x00fe
@@ -296,50 +301,6 @@ IFDTagPairs = (
     (IFDTag.SubfileType,                IFDSubfileType),
     (IFDTag.Thresholding,               IFDThresholding),
 )
-
-def make_backways_map (enum_class):
-    """Make a backways value mapping.
-
-    This takes in what is basically an enum class and constructs a
-    dictionary keyed on the values. Its values will be the associated
-    name strings.
-
-        >>> class SomeEnum:
-        ...     ThingOne    = 1
-        ...     ThingTwo    = 2
-        ...     ThingThree  = 3
-        ... 
-        >>> make_backways_map(SomeEnum)
-        {1: "ThingOne", 2: "ThingTwo", 3: "ThingThree"}
-
-    This mostly functions just for error reporting and human-readable
-    outputs and soforth. Just to be pretty, natch.
-    """
-
-    # We're making a dictionary.
-    result  = { }
-
-    # Here's the super-informative error message we'll give if there's a
-    # collision.
-    error   = "Can't have more than one {{:d}} ({name}.{{}} and" \
-              " {name}.{{}})".format(name = enum_class.__name__).format
-
-    for key, value in vars(enum_class).items():
-        # Look at each key-value pair.
-        if key.startswith("_"):
-            # All the regular python stuff starts with underscores.
-            # Ignore it.
-            continue
-
-        # We're gonna use the values as keys. If this one's already in
-        # there, then we have a collision. Report all nice-like.
-        assert value not in result, error(value, result[value], key)
-
-        # Nice! Add the pair.
-        result[value] = key
-
-    # Now we can return this happy dictionary.
-    return result
 
 # Here's a nice backways IFD tag map.
 TiffTagNameDict     = make_backways_map(IFDTag)

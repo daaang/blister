@@ -9,6 +9,7 @@ from io             import  BytesIO, BufferedReader
 from itertools      import  count
 from numpy          import  nan as NaN, inf as infinity
 from random         import  randrange
+from sys            import  version_info
 
 from ...compat23    import  FileReader, int_to_bytes, \
                             bytes_to_int, hex_to_bytes
@@ -20,16 +21,13 @@ from .tags          import  IFDTag, IFDCompression, IFDExtraSamples,   \
                             TiffTagNameDict, TiffTagValueDict
 import unittest
 
-########################################################################
-################################ 2 to 3 ################################
-########################################################################
-############ Also, be sure to run on the command line:      ############
-############                                                ############
-############   $ sed -i -e 's/assertRaisesRegex/&p/' [file] ############
-########################################################################
+if version_info[0] > 2:
+    # Python 3 just has the one int type.
+    int_types = int
 
-#int_types = (int, long)
-int_types = int
+else:
+    # Python 2 has a couple int types to take into account.
+    int_types = (int, long)
 
 ########################################################################
 ############################# TIFF Classes #############################
