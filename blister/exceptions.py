@@ -63,16 +63,54 @@ class FileReadError (BlisterBaseError):
 
     """
 
-    def __init__ (self, position):
+    def __init__ (self, position, *args):
         # All I want to actually take in is a positional argument; the
         # message should be set by the child class.
-        self.position = position
+        self.position   = position
+        self.args       = args
 
     def __str__ (self):
         # After displaying the message, display the relevant position in
         # the file.
-        return "{} (0x{:08x})".format(self.__doc__, self.position)
+        return "{} (0x{:08x})".format(self.__doc__.format(*(self.args)),
+                                      self.position)
 
 class UnexpectedEOF (FileReadError):
     """Unexpected end of file."""
+    pass
+
+class TiffError (FileReadError):
+    """Catch-all for tiff errors."""
+    pass
+
+class TiffUnknownByteOrder (TiffError):
+    """Unknown byte order: {}"""
+    pass
+
+class TiffWrongMagicNumber (TiffError):
+    """Wrong magic number: expected {:d}; found {:d}"""
+    pass
+
+class TiffFirstIFDOffsetTooLow (TiffError):
+    """IFD offset must be at least {:d}; I was given {:d}"""
+    pass
+
+class TiffEmptyIFD (TiffError):
+    """IFD {:d} must have at least one entry."""
+    pass
+
+class TiffDuplicateTag (TiffError):
+    """Tag {:d} ({}) is already in IFD {:d}; no duplicates allowed."""
+    pass
+
+class TiffOffsetsWithoutBytecounts (TiffError):
+    """Can't have tag {:d} ({}) without also having tag {:d} ({})."""
+    pass
+
+class TiffOffsetsDontMatchBytecounts (TiffError):
+    """Array lengths must match between tags {:d} ({}) and {:d} ({})."""
+    pass
+
+class TiffFloatError (TiffError):
+    """I don't know how to make a float {:d} byte{} long"""
     pass

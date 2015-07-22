@@ -5,21 +5,25 @@ from bisect         import  bisect_left, insort_left
 from collections    import  namedtuple, Mapping, MutableMapping, \
                             Sequence, Iterable
 from fractions      import  Fraction
-from io             import  BytesIO, BufferedReader
 from itertools      import  count
 from numpy          import  nan as NaN, inf as infinity
-from random         import  randrange
 from sys            import  version_info
 
-from ...compat23    import  FileReader, int_to_bytes, \
-                            bytes_to_int, hex_to_bytes
+from ...exceptions  import  TiffUnknownByteOrder,                      \
+                            TiffWrongMagicNumber,                      \
+                            TiffFirstIFDOffsetTooLow,                  \
+                            TiffEmptyIFD, TiffDuplicateTag,            \
+                            TiffOffsetsWithoutBytecounts,              \
+                            TiffOffsetsDontMatchBytecounts,            \
+                            TiffFloatError
+from ...internal    import  int_to_bytes, bytes_to_int
+from ..file_reader  import  FileReader
 from .tags          import  IFDTag, IFDCompression, IFDExtraSamples,   \
                             IFDFillOrder, IFDOrientation,              \
                             IFDPhotometricInterpretation,              \
                             IFDPlanarConfiguration, IFDResolutionUnit, \
                             IFDSubfileType, IFDThresholding,           \
                             TiffTagNameDict, TiffTagValueDict
-import unittest
 
 if version_info[0] > 2:
     # Python 3 just has the one int type.
@@ -937,17 +941,15 @@ class Tiff (Sequence):
 
         except KeyError as e:
             # If it didn't work, raise an error.
-            self.raise_error(-2, "Unknown byte order: {}".format(
-                str(e)))
+            self.tiff.error(TiffUnknownByteOrder, -2, str(e))
 
         # Read the magic number (it's 42).
         forty_two   = self.read_int(2)
 
         if forty_two != self.magic_check_number:
             # Uh oh! It's something other than 42 oh no oh no!
-            self.raise_error(-2, "Expected {:d}; found {:d}".format(
-                                    self.magic_check_number,
-                                    forty_two))
+            self.tiff.error(TiffWrongMagicNumber, -2,
+                            self.magic_check_number, forty_two)
 
         # Cool. Next is the IFD offset. How many bytes have we read so
         # far? (The answer is absolutely going to be 8.)
@@ -957,9 +959,8 @@ class Tiff (Sequence):
         if ifd_offset < header_length:
             # Be sure the offset doesn't point to anywhere in the tiff
             # header.
-            self.raise_error(-4, "IFD offset must be at least {:d};" \
-                             " you gave me {:d}".format(header_length,
-                                                        ifd_offset))
+            self.tiff.error(TiffFirstIFDOffsetTooLow, -4,
+                            header_length, ifd_offset)
 
         # Add the header bytes to the byte range.
         self.add_bytes(0, header_length, (None, None, None))
@@ -979,9 +980,7 @@ class Tiff (Sequence):
 
             if entry_count < 1:
                 # Be sure that we have at least one entry.
-                self.raise_error(-2,
-                        "IFD{:d} must have at least one entry".format(
-                                len(ifds)))
+                self.tiff.error(TiffEmptyIFD, -2, len(ifds))
 
             # Add the bytes.
             self.add_bytes(ifd_offset,
@@ -1004,11 +1003,9 @@ class Tiff (Sequence):
 
                 if tag in entries:
                     # No duplicate entries are allowed.
-                    self.raise_error(offset,
-                            "Tag {tag:d} (0x{tag:x}) is already in" \
-                            " IFD{ifd:d}; no duplicates allowed".format(
-                                    tag = tag,
-                                    ifd = len(ifds)))
+                    self.tiff.error(TiffDuplicateTag, 0, tag,
+                                    TiffTagNameDict.get(tag, "unknown"),
+                                    len(ifds))
 
                 if tag < largest_entry_seen_so_far:
                     # Keep track of out-of-order entries. They make the
@@ -1188,11 +1185,15 @@ class Tiff (Sequence):
                     # This IFD has offsets in this strip type.
                     if length not in ifd:
                         # But it doesn't have bytecounts! Whoooops!
-                        self.raise_error(offset_dict[(ifd_number,
-                                                      offset)],
-                                "Can't have tag {:d} without also" \
-                                " having tag {:d}".format(offset,
-                                                          length))
+                        self.tiff.error(TiffOffsetsWithoutBytecounts,
+                                        offset_dict[(ifd_number,
+                                                     offset)],
+                                        offset,
+                                        TiffTagNameDict.get(offset,
+                                                            "unknown"),
+                                        length,
+                                        TiffTagNameDict.get(length,
+                                                            "unknown"))
 
                     # Ok cool, it has both. Get the value arrays.
                     offsets = ifd[offset]
@@ -1201,11 +1202,15 @@ class Tiff (Sequence):
                     if len(offsets) != len(lengths):
                         # Uh oh, the arrays have different lengths. I
                         # can't match them up!
-                        self.raise_error(offset_dict[(ifd_number,
-                                                      offset)],
-                                "Array lengths must match between" \
-                                " tags {:d} and {:d}".format(offset,
-                                                             length))
+                        self.tiff.error(TiffOffsetsWithoutBytecounts,
+                                        offset_dict[(ifd_number,
+                                                     offset)],
+                                        offset,
+                                        TiffTagNameDict.get(offset,
+                                                            "unknown"),
+                                        length,
+                                        TiffTagNameDict.get(length,
+                                                            "unknown"))
 
                     for strip_i, pos_i, len_i in zip(count(),
                                                      offsets,
@@ -1333,10 +1338,6 @@ class Tiff (Sequence):
         # This is a shortcut for reading in an int from the tiff.
         return self.bytes_to_int(self.read(length))
 
-    def raise_error (self, pos, message = None):
-        """Raise a TiffError"""
-        return self.tiff.error(pos, message)
-
     def int_to_bytes (self, integer, length):
         """Convert int to bytes"""
         return int_to_bytes(integer, length, self.byte_order)
@@ -1389,9 +1390,8 @@ class Tiff (Sequence):
         if bytecount not in IEEE_754_Parameters:
             # If we don't know how to handle a float of this size, we
             # give up.
-            self.raise_error("I don't know how to make a float {:d}" \
-                    " byte{} long".format(bytecount,
-                        "" if bytecount == 1 else "s"))
+            self.tiff.error(TiffFloatError, 0, bytecount,
+                            "" if bytecount == 1 else "s")
 
         # Get masks for each piece.
         sign_mask, exp_mask, num_mask = IEEE_754_Parameters[bytecount]
@@ -1446,331 +1446,3 @@ class Tiff (Sequence):
         return Float(numerator + denominator,
                      denominator,
                      exp - offset)
-
-########################################################################
-############################### Testing ################################
-########################################################################
-
-class TestRangedList (unittest.TestCase):
-    def setUp (self):
-        self.ranged_list = RangedList()
-
-        self.ranged_list[0:10]      = "the first ten bytes"
-        self.ranged_list[90:100]    = "ninety through ninety-nine"
-        self.ranged_list[44]        = "forty-four"
-
-    def test_length (self):
-        self.assertEqual(len(self.ranged_list), 100,
-                         "length should be 100")
-
-    def test_bad_insert_left (self):
-        with self.assertRaisesRegex(KeyError,
-                                    r"Can't reassign values"):
-            self.ranged_list[85:95]     = "uh oh"
-
-    def test_bad_insert_right (self):
-        with self.assertRaisesRegex(KeyError,
-                                    r"Can't reassign values"):
-            self.ranged_list[95:105]    = "uh oh"
-
-    def test_bad_insert_inside (self):
-        with self.assertRaisesRegex(KeyError,
-                                    r"Can't reassign values"):
-            self.ranged_list[92:98]     = "uh oh"
-
-    def test_bad_insert_outside (self):
-        with self.assertRaisesRegex(KeyError,
-                                    r"Can't reassign values"):
-            self.ranged_list[85:105]    = "uh oh"
-
-    def test_bad_insert_zero_slice (self):
-        with self.assertRaisesRegex(KeyError,
-                                    r"Can't insert empty slice"):
-            self.ranged_list[20:20]     = "uh oh"
-
-    def test_bad_insert_stepped (self):
-        with self.assertRaisesRegex(KeyError,
-                                    r"Invalid step [0-9]+ \(if set" \
-                                    r" at all, it must be 1\)"):
-            self.ranged_list[30:50:2]   = "uh oh"
-
-    def test_bad_insert_nonslice (self):
-        with self.assertRaisesRegex(KeyError,
-                                    r"Need int or slice, not"):
-            self.ranged_list["hey"]     = "uh oh"
-
-    def test_bad_insert_negative (self):
-        with self.assertRaisesRegex(KeyError,
-                                    r"Negative indeces are not" \
-                                    r" allowed \(you gave me"):
-            self.ranged_list[-5:5]      = "uh oh"
-
-    def test_accessors_ints (self):
-        # Test each int accessor.
-        for i in range(10):
-            self.assertEqual(self.ranged_list[i], "the first ten bytes",
-                             "wrong values from the first insertion")
-
-        for i in range(90, 100):
-            self.assertEqual(self.ranged_list[i],
-                             "ninety through ninety-nine",
-                             "wrong values from the second insertion")
-
-    def test_accessors_slice (self):
-        # Test some slices.
-        self.assertEqual(self.ranged_list[5:8],
-                         [(slice(5, 8), "the first ten bytes")])
-
-        self.assertEqual(self.ranged_list[5:20],
-                         [(slice(5, 10), "the first ten bytes")])
-
-        self.assertEqual(self.ranged_list[:95],
-                         [(slice(0, 10), "the first ten bytes"),
-                         (slice(44, 45), "forty-four"),
-                         (slice(90, 95), "ninety through ninety-nine")])
-
-    def test_iteration (self):
-        items   = [
-            (slice(0, 10),      "the first ten bytes"),
-            (slice(44, 45),     "forty-four"),
-            (slice(90, 100),    "ninety through ninety-nine"),
-        ]
-
-        # We'll be able to infer the keys and values from the items.
-        # Since iteration is by keys by default, we'll need two
-        # different arrays of keys.
-        keys    = [[ ], [ ]]
-        values  = [ ]
-
-        # Autofill.
-        for i, j in items:
-            for k in range(2):
-                # Once again, we have two arrays of keys, to test both
-                # generators.
-                keys[k].append(i)
-
-            # We'll also fill the values.
-            values.append(j)
-
-        for x in self.ranged_list:
-            # Check the __iter__ generator first.
-            self.assertEqual(x, keys[0].pop(0))
-
-        for x in self.ranged_list.keys():
-            # Check the explicit keys next.
-            self.assertEqual(x, keys[1].pop(0))
-
-        for x in self.ranged_list.values():
-            self.assertEqual(x, values.pop(0))
-
-        for x in self.ranged_list.items():
-            self.assertEqual(x, items.pop(0))
-
-    def test_containment_ints (self):
-        # Test some basic containment operations.
-        self.assertTrue(   0 in self.ranged_list)
-        self.assertTrue(   5 in self.ranged_list)
-        self.assertFalse( 10 in self.ranged_list)
-        self.assertFalse( 50 in self.ranged_list)
-        self.assertTrue(  90 in self.ranged_list)
-        self.assertTrue(  95 in self.ranged_list)
-        self.assertFalse(100 in self.ranged_list)
-
-    def test_containment_slices (self):
-        self.assertTrue(slice(0,    10)     in self.ranged_list)
-        self.assertTrue(slice(0,    15)     in self.ranged_list)
-        self.assertFalse(slice(10,  20)     in self.ranged_list)
-        self.assertTrue(slice(9,    28)     in self.ranged_list)
-        self.assertTrue(slice(3,     7)     in self.ranged_list)
-        self.assertTrue(slice(80,   91)     in self.ranged_list)
-        self.assertFalse(slice(80,  90)     in self.ranged_list)
-
-class TestTiff (unittest.TestCase):
-    # This is a valid tiff with CCITT Group4 compression.
-    tinytiff    = hex_to_bytes("""\
-                    49 49  2a 00  08 00 00 00               \
-                                                            \
-                    0c 00                                   \
-                    00 01  03 00  01 00 00 00  6c 00 00 00  \
-                    01 01  03 00  01 00 00 00  24 00 00 00  \
-                    02 01  03 00  01 00 00 00  01 00 00 00  \
-                    03 01  03 00  01 00 00 00  04 00 00 00  \
-                    06 01  03 00  01 00 00 00  00 00 00 00  \
-                    0a 01  03 00  01 00 00 00  01 00 00 00  \
-                    11 01  04 00  01 00 00 00  9e 00 00 00  \
-                    15 01  03 00  01 00 00 00  01 00 00 00  \
-                    17 01  04 00  01 00 00 00  50 00 00 00  \
-                    1c 01  03 00  01 00 00 00  01 00 00 00  \
-                    28 01  03 00  01 00 00 00  03 00 00 00  \
-                    3b 01  02 00  06 00 00 00  ee 00 00 00  \
-                                               00 00 00 00  \
-                                                            \
-                    f3 6c 90 cc c3 99 86 83                 \
-                    61 a0 db ff ff ff ff ff                 \
-                    91 6e 6d 92 19 21 91 0f                 \
-                    ff ff ff ff ff fe 5d 97                 \
-                    7f ff ff ff ff ff ff ff                 \
-                    f1 e3 ff ff ff ff ff ff                 \
-                    e5 91 ff ff ff ff ff ff                 \
-                    ff ff 1f ff ff ff ff ff                 \
-                    ff 24 3f ff ff ff ff ff                 \
-                    c4 44 44 47 c0 04 00 40                 \
-                                                            \
-                    4d 61 74 74 21 00""")
-
-    def setUp (self):
-        self.tiff_obj = Tiff(BufferedReader(BytesIO(self.tinytiff)))
-        for ifd in self.tiff_obj:
-            ifd.add_required_tags(
-                    IFDTag.BitsPerSample,
-                    IFDTag.Compression,
-                    IFDTag.Orientation,
-                    IFDTag.SamplesPerPixel)
-
-    def test_file_is_mode_rb (self):
-        # Be sure we won't accept any files that aren't binary
-        # read-only.
-        for i in ("r", "w", "wb", "a", "ab"):
-            with open("/dev/null", i) as dev_null:
-                with self.assertRaisesRegex(TypeError,
-                        r"Expected a file with mode 'rb'"):
-                    tiff = Tiff(dev_null)
-
-    def test_invalid_eof (self):
-        eof = "Unexpected EOF"
-
-        for i in (0, 2, 4, 8, 32, -1):
-            with self.assertRaisesRegex(FileReader.ReadError, eof):
-                tiff = Tiff(BufferedReader(BytesIO(self.tinytiff[:i])))
-
-    def test_invalid_byte_orders (self):
-        valid = set((b"II", b"MM"))
-
-        for i in range(0x100):
-            # We'll try a bunch of random bad bytestrings.
-            randbytes = b"II"
-            while randbytes in valid:
-                randbytes = int_to_bytes(randrange(0x10000), 2, "big")
-
-            with self.assertRaisesRegex(FileReader.ReadError,
-                    r"Unknown byte order: .*0x00000000"):
-                tiff = Tiff(BufferedReader(BytesIO(randbytes)))
-
-    def test_forty_two (self):
-        orders  = {b"II": "little", b"MM": "big"}
-        regex   = r"Expected 42; found {:d} .0x00000002".format
-
-        for head, order in orders.items():
-            # Let's start with 0x2a00 just to be sure it's doing the
-            # right thing with the endienness.
-            j = 0x100 * 42
-            for i in range(0x100):
-                while j == 42:
-                    j = randrange(0x10000)
-
-                with self.assertRaisesRegex(FileReader.ReadError, regex(j)):
-                    tiff = Tiff(BufferedReader(BytesIO(
-                                head + int_to_bytes(j, 2, order))))
-
-                j = randrange(0x10000)
-
-    def test_ifd_min (self):
-        regex   = r"IFD offset must be at least 8; you gave me {:d}"
-        for i in range(8):
-            with self.assertRaisesRegex(FileReader.ReadError,
-                    regex.format(i)):
-                tiff = Tiff(BufferedReader(BytesIO(self.tinytiff[:4]
-                            + int_to_bytes(i, 4, "little"))))
-
-    def test_ifd_entry_count (self):
-        with self.assertRaisesRegex(FileReader.ReadError,
-                r"IFD0 must have at least one entry .0x00000008"):
-            tiff = Tiff(BufferedReader(BytesIO(self.tinytiff[:8]
-                        + b"\0\0")))
-
-    def test_ifd_no_duplicate_entries (self):
-        with self.assertRaisesRegex(FileReader.ReadError,
-                r"Tag 256 \(0x100\) is already in IFD0;" \
-                r" no duplicates allowed .0x00000016"):
-            tiff = Tiff(BufferedReader(BytesIO(self.tinytiff[:0x16]
-                        + b"\0" + self.tinytiff[0x17:])))
-
-    def test_valid_ifdlen (self):
-        self.assertEqual(1, len(self.tiff_obj))
-        self.assertEqual(0xb, len(self.tiff_obj[0]))
-
-    def test_valid_single_numbers (self):
-        for tag, value in (
-                (IFDTag.ImageWidth,         108),
-                (IFDTag.ImageLength,        36),
-                (IFDTag.BitsPerSample,      1),
-                (IFDTag.SamplesPerPixel,    1),
-                (IFDTag.Compression,        IFDCompression.Group4Fax),
-                (IFDTag.FillOrder,          IFDFillOrder.LeftToRight),
-                (IFDTag.PlanarConfiguration,
-                    IFDPlanarConfiguration.Chunky),
-                (IFDTag.ResolutionUnit,
-                    IFDResolutionUnit.Centimeter),
-                (IFDTag.PhotometricInterpretation,
-                    IFDPhotometricInterpretation.WhiteIsZero)):
-            self.assertEqual(1, len(self.tiff_obj[0][tag]),
-                             TiffTagNameDict[tag])
-            self.assertEqual(value, self.tiff_obj[0][tag][0],
-                             TiffTagNameDict[tag])
-
-    def test_artist (self):
-        self.assertEqual(b"Matt!", self.tiff_obj[0][315])
-
-    def assertIteration (self):
-        for i, j in self.tiff_obj[0].items():
-            pass
-
-    def test_del_default (self):
-        del self.tiff_obj[0][IFDTag.Compression]
-
-        self.assertTrue(IFDTag.Compression in self.tiff_obj[0])
-        self.assertEqual(0xb, len(self.tiff_obj[0]))
-
-        self.assertEqual(self.tiff_obj[0][IFDTag.Compression],
-                         [IFDCompression.uncompressed])
-
-        self.assertIteration()
-
-    def test_del_nodefault (self):
-        del self.tiff_obj[0][IFDTag.Artist]
-
-        self.assertFalse(IFDTag.Artist in self.tiff_obj[0])
-        self.assertEqual(0xa, len(self.tiff_obj[0]))
-
-        self.assertIteration()
-
-    def test_del_nonreq (self):
-        del self.tiff_obj[0][IFDTag.ResolutionUnit]
-
-        self.assertTrue(IFDTag.ResolutionUnit in self.tiff_obj[0])
-        self.assertFalse(IFDTag.ResolutionUnit in
-                list(self.tiff_obj[0].keys()))
-        self.assertEqual(0xa, len(self.tiff_obj[0]))
-
-        self.assertEqual(self.tiff_obj[0][IFDTag.ResolutionUnit],
-                         [IFDResolutionUnit.Inch])
-
-        self.assertIteration()
-
-    def test_del_req_nodefault (self):
-        del self.tiff_obj[0][IFDTag.ImageWidth]
-
-        self.assertFalse(IFDTag.ImageWidth in self.tiff_obj[0])
-        self.assertTrue(IFDTag.ImageWidth in
-                list(self.tiff_obj[0].keys()))
-        self.assertEqual(0xb, len(self.tiff_obj[0]))
-
-        with self.assertRaisesRegex(KeyError, repr(IFDTag.ImageWidth)):
-            a = self.tiff_obj[0][IFDTag.ImageWidth]
-
-        with self.assertRaisesRegex(KeyError, repr(IFDTag.ImageWidth)):
-            self.assertIteration()
-
-if __name__ == "__main__":
-    # If this is accessed directly, test everything.
-    unittest.main()
