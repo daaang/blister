@@ -7,6 +7,8 @@ from fractions      import  Fraction
 from generic        import  FileReader, hex_to_bytes, deflatten
 from re             import  compile as re_compile
 
+from ..file_reader  import  FileReader
+
 def safe_decode (bytestring):
     """Decode bytes into a unicode string"""
     try:
@@ -99,6 +101,9 @@ class PdfName (Hashable):
     def hashtag_repl (self, match):
         """Replace `#XX` with a single byte"""
         return hex_to_bytes(match.group(1))
+
+class PdfDictType:
+    ObjStm      = PdfName("ObjStm")
 
 class PdfDict (Mapping):
     """PDF Dictionary"""
@@ -207,19 +212,29 @@ class PdfDict (Mapping):
         return "<{} {{{}}}>".format(self.__class__.__name__,
                                     ", ".join(pairs))
 
-class PdfToken:
+class PdfToken (Hashable):
     """PDF Token"""
     def __init__ (self, bytestring):
         """Take in a string of regular bytes"""
-        self.token  = bytestring
+        self.token  = bytes(bytestring)
+
+    def __hash__ (self):
+        return hash(self.token)
 
     def __bytes__ (self):
         """This is already little more than a bytes object"""
         return self.token
 
     def __eq__ (self, other):
+        if not isinstance(other, self.__class__):
+            return False
+
         return bytes(self) == bytes(other)
+
     def __ne__ (self, other):
+        if not isinstance(other, self.__class__):
+            return True
+
         return bytes(self) != bytes(other)
 
     def __repr__ (self):
@@ -229,6 +244,34 @@ class PdfToken:
 
 PdfObjectReference  = namedtuple("PdfObjectReference",
                                  ("number", "generation"))
+
+class PdfIndirectObject:
+    def __init__ (self, token_stack):
+        if len(token_stack) != 4:
+            raise Exception("Indirect objects should contain 4 tokens.")
+
+        self.object_key = PdfObjectReference(token_stack.popleft(),
+                                             token_stack.popleft())
+        obj_token       = token_stack.popleft()
+        self.value      = token_stack.popleft()
+
+        if obj_token != PdfToken(b"obj"):
+            raise Exception("The third token should be obj.")
+
+        if isinstance(self.value, PdfDict):
+            self.value = dict(self.value)
+
+class PdfStream (PdfIndirectObject):
+    def __init__ (self, token_stack, offset):
+        super(PdfStream, self).__init__(token_stack)
+
+        self.stream_offset  = offset
+
+    def get_stream_data (self, length, file_object):
+        file_object.seek(self.stream_offset)
+        data = file_object.read(length)
+
+        # TODO deal with compression
 
 class PdfObjectFactory:
     """PDF Object Parser
@@ -756,6 +799,524 @@ class PdfObjectFactory:
             # Otherwise, grab the byte value.
             self.byte   = bytestring[0]
 
+    def read_indirect_object (self, *already_read):
+        # We'll be using a queue.
+        token_stack = deque()
+
+        for token in already_read:
+            # Loop through any values we've already found outside of
+            # this particular function.
+            if isinstance(token, PdfToken):
+                # If we find a token, take a closer look.
+                token_bytes = bytes(token)
+
+                if token_bytes == b"endobj":
+                    # If we reach the end of the object, we have a basic
+                    # indirect object on our hands.
+                    return PdfIndirectObject(token_stack)
+
+                if token_bytes == b"stream":
+                    # Otherwise, if we reach the beginning of a stream,
+                    # then there will be more work to do. But later.
+                    return self.return_stream(token_stack)
+
+            # If we aren't done, we can just push this token onto our
+            # queue.
+            token_stack.append(token)
+
+        while len(token_stack) < 5:
+            # Cool. We're done with already-found values, and now we're
+            # just reading new ones.
+            token = self.read()
+
+            if isinstance(token, PdfToken):
+                # Again tokens require closer looks.
+                token_bytes = bytes(token)
+
+                if token_bytes == b"endobj":
+                    return PdfIndirectObject(token_stack)
+                if token_bytes == b"stream":
+                    return self.return_stream(token_stack)
+
+            # And non-ending tokens will just be pushed.
+            token_stack.append(token)
+
+        # If we reach a fifth object without reaching an ending token,
+        # then we have some invalid nonsense going on here. Eff that.
+        raise Exception("The fifth object should be endobj or stream.")
+
+    def return_stream (self, token_stack):
+        while self.byte != self.eol_lf:
+            # Look for a line feed.
+            self.step()
+
+        # Go past the line feed.
+        self.step()
+
+        # Return the stream with the offset for the very beginning of
+        # the stream data.
+        return PdfStream(token_stack, self.pos)
+
     def __repr__ (self):
         """Represent our position"""
         return "<{} {:08x}>".format(self.__class__.__name__, self.pos)
+
+class PdfTrailer:
+    def __init__ (self,
+                  size,
+                  root,
+                  info          = None,
+                  original_id   = None,
+                  current_id    = None):
+        self.size           = size
+        self.root           = root
+        self.info           = info
+        self.original_id    = original_id
+        self.current_id     = current_id
+
+class PdfObjEntry:
+    FreeEntry   = 0
+    InUseEntry  = 1
+    Compressed  = 2
+
+class PdfXrefHistory:
+    old_fashioned_tokens = {
+        PdfToken(b"f"): PdfObjEntry.FreeEntry,
+        PdfToken(b"n"): PdfObjEntry.InUseEntry,
+    }
+
+    FreeEntryTuple  = namedtuple("FreeEntryTuple",  ("next_free",
+                                                     "generation"))
+    InUseEntryTuple = namedtuple("InUseEntryTuple", ("offset",
+                                                     "generation"))
+    CompressedTuple = namedtuple("CompressedTuple", ("parent_stream",
+                                                     "index"))
+
+    tuples_by_type = {
+        PdfObjEntry.FreeEntry:  FreeEntryTuple,
+        PdfObjEntry.InUseEntry: InUseEntryTuple,
+        PdfObjEntry.Compressed: CompressedTuple,
+    }
+
+    def __init__ (self, factory_pointed_at_last_xref):
+        # We'll store a list of cross reference tables and a list of
+        # trailers.
+        self.cross_refs = [ ]
+        self.trailers   = [ ]
+
+        # Since we haven't even started reading yet, we know there's
+        # more to read.
+        theres_more_to_read = True
+
+        while theres_more_to_read:
+            # While there is more to read, keep reading cross reference
+            # sections.
+            theres_more_to_read = self.read_xref(
+                                    factory_pointed_at_last_xref)
+
+    def read_xref (self, factory):
+        # Get whatever the first object is here.
+        first_object    = factory.read()
+
+        if first_object == PdfToken(b"xref"):
+            # If it's an xref token, then it marks the beginning of an
+            # old-fashioned cross reference stream.
+            return self.read_table(factory)
+
+        # Otherwise, it's a cross reference stream, and the first four
+        # things will be the object number, the generation number, the
+        # `obj` token, and the stream dictionary (which we'll call the
+        # trailer, for all intents and purposes).
+        obj_num = first_object
+        gen_num = factory.read()
+        obj_tok = factory.read()
+        trailer = factory.read()
+
+    def read_table (self, factory):
+        # In the end, we'll have a dictionary keyed on object numbers.
+        section_data = { }
+
+        while True:
+            # Get the first number of this subsection.
+            object_start    = factory.read()
+
+            if object_start == PdfToken(b"trailer"):
+                # If it's actually the trailer token instead of the
+                # start of a new subsection, then we're done with this
+                # section, and we can insert it.
+                self.cross_refs.insert(0, section_data)
+
+                # Next up is adding the trailer.
+                return self.read_trailer(factory, dict(factory.read()))
+
+            # Otherwise, we must have a cross reference subsection to
+            # read. Get the second number (the object count).
+            object_stop     = factory.read() + object_start
+
+            for object_number in range(object_start, object_stop):
+                # Each line has three things on it: two numbers and a
+                # type token.
+                first_number    = factory.read()
+                second_number   = factory.read()
+                type_token      = factory.read()
+
+                if object_number in section_data:
+                    # If we've already seen this object number, we
+                    # should silently ignore it (because Acrobat will
+                    # also silently ignore it).
+                    continue
+
+                # The type should be in the old-fashioned token dict.
+                entry_type      = self.old_fashioned_tokens[type_token]
+
+                # Finally add whatever information we got in the
+                # appropriate format to our section data.
+                section_data[object_number] = self.get_xref_entry(
+                                                entry_type,
+                                                first_number,
+                                                second_number)
+
+    def read_trailer (self, factory, trailer):
+        # These two must be in there.
+        size    = trailer["Size"]
+        root    = trailer["Root"]
+
+        # And these two might be in there.
+        info    = trailer.get("Info", None)
+        ids     = trailer.get("ID", [None, None])
+
+        # Insert the trailer data.
+        self.trailers.insert(0, PdfTrailer(size,
+                                           root,
+                                           info,
+                                           ids[0],
+                                           ids[1]))
+
+        if "Prev" in trailer:
+            # If there's a previous cross reference section, then we
+            # need to point our factory at it.
+            factory.seek(trailer["Prev"])
+
+            # We return true to show that there's more work to do.
+            return True
+
+        else:
+            # If there's no reference to a previous section, this must
+            # be the first one. In this case, we return false to show
+            # that we're done reading cross reference sections.
+            return False
+
+    def get_xref_entry (self, entry_type, field_2, field_3):
+        return self.tuples_by_type[entry_type](field_2, field_3)
+
+class PdfCrossReference (Mapping):
+    EntryTuple = namedtuple("EntryTuple", ("generation",
+                                           "value"))
+
+    ObjPos = namedtuple("ObjPos", ("offset",))
+    SubObj = namedtuple("SubObj", ("parent", "index"))
+
+    def __init__ (self, factory, xref_history):
+        self.factory        = factory
+        self.internal_dict  = { }
+        self.max_object_num = 0
+
+        self.pull_data_from_history(xref_history)
+
+        self.extract_objects_from_file()
+
+    def __len__ (self):
+        return self.max_object_num + 1
+
+    def __getitem__ (self, key):
+        if not isinstance(key, tuple) \
+                or len(key) != 2:
+            # Be sure the user asked for an object number and a
+            # generation number.
+            raise KeyError("Expected a 2-tuple of object number and" \
+                           " generation number.")
+
+        # Extract the two numbers that will help is find the object.
+        obj_num, gen_num = key
+
+        if obj_num in self.internal_dict:
+            # We do have an object by this number. Extract it.
+            generation, value = self.internal_dict[obj_num]
+
+            if generation == gen_num:
+                # Oh nice! And the generation matches! Well done.
+                return value
+
+        # According to the PDF spec, there are no incorrect indirect
+        # references to objects. If a referenced object does not
+        # actually exist, it should be treated as null.
+        return None
+
+    def __iter__ (self):
+        return self.keys()
+
+    def __contains__ (self, key):
+        if not isinstance(key, tuple) \
+                or len(key) != 2:
+            # If the key isn't a 2-tuple, then it isn't in here.
+            return False
+
+        # Extract the two numbers that make up the key.
+        obj_num, gen_num = key
+
+        if obj_num in self.internal_dict:
+            # If we do have this object by number, make sure the key
+            # matches.
+            return gen_num = self.internal_dict[obj_num].generation
+
+        else:
+            # If we don't, then we don't.
+            return False
+
+    def simple_iterator (func):
+        def result (self):
+            # We want to iterate in order across every possible object.
+            for obj_num in range(self.max_object_num + 1):
+                # For each possible object number, check for its
+                # existence in our internal dictionary.
+                if obj_num in self.internal_dict:
+                    # We have it. What we do next depends on exactly
+                    # what we need to be yielding.
+                    yield func(obj_num, self.internal_dict[obj_num])
+
+        return result
+
+    @simple_iterator
+    def items (obj_num, entry):
+        # Since we're returning the key and the value, we'll need to
+        # extract that information from the entry, which contains half
+        # the key and the entire value.
+        gen_num, value = entry
+
+        # The resulting 2-tuple contains a 2-tuple key and the value.
+        return (PdfObjectReference(obj_num, gen_num), value)
+
+    @simple_iterator
+    def keys (obj_num, entry):
+        # Half the key (the generation number) is in the entry.
+        return PdfObjectReference(obj_num, entry.generation)
+
+    @simple_iterator
+    def values (obj_num, entry):
+        # In this case, we needn't even look at the generation number.
+        return entry.value
+
+    def pull_data_from_history (self, xref_history):
+        # We'll look at each cross reference section from oldest to
+        # newest.
+        for xref in xref_history.cross_refs:
+            # We'll look at the actual entries in no particular order.
+            for obj_num, value in xref:
+                if obj_num > self.max_object_num:
+                    # If this is the largest entry we've yet seen, we
+                    # should make a note of it.
+                    self.max_object_num = obj_num
+
+                if isinstance(value, PdfXrefHistory.FreeEntryTuple):
+                    # We don't track free objects.
+                    if obj_num in self.internal_dict:
+                        # If this object ever was in the dictionary, get
+                        # rid of it.
+                        del self.internal_dict[obj_num]
+
+                elif isinstance(value, PdfXrefHistory.InUseEntryTuple):
+                    # If it's just a regular entry, then we start by
+                    # just adding the offset wrapped in the ObjPos
+                    # tuple.
+                    self.internal_dict[obj_num] = self.EntryTuple(
+                            value.generation, self.ObjPos(value.offset))
+
+                elif isinstance(value, PdfXrefHistory.CompressedTuple):
+                    # Otherwise, if it's a compressed entry, then we'll
+                    # give it its implicit generation number of zero and
+                    # insert a 2-tuple with extraction information.
+                    self.internal_dict[obj_num] = self.EntryTuple(0,
+                            self.SubObj(value.parent_stream,
+                                        value.index))
+
+    def extract_objects_from_file (self):
+        # Pull all the easy objects and pay attention to which (if any)
+        # are object streams.
+        objstms = self.first_pass_normal_objects()
+
+    def first_pass_normal_objects (self):
+        # Be ready to collect a list of keys to object streams.
+        objstms = set()
+
+        for key, value in self.items():
+            if isinstance(value, self.ObjPos):
+                # The first time around, we only pay attention to simple
+                # objects with nothing more than an offset. Point our
+                # factory at that offset.
+                self.factory.seek(value.offset)
+
+                # Get the indirect object from the pdf file.
+                indirect_object = self.factory.read_indirect_object()
+
+                if indirect_object.object_key != key:
+                    raise Exception("Keys must be equal")
+
+                # Extract the subkeys for inserting the actual data into
+                # the internal dictionary.
+                obj, gen = key
+                self.internal_dict[obj] = self.EntryTuple(
+                        gen, indirect_object)
+
+                if isinstance(indirect_object, PdfStream):
+                    # If we have a stream, check whether it's an object
+                    # stream.
+                    if indirect_object.value.get("Type", None) \
+                            == PdfDictType.ObjStm:
+                        # If it is, add it to the result set.
+                        objstms.add(key)
+
+        return objstms
+
+    def second_pass_object_streams (self, objstms):
+        # We want to track the size of this set in order to avoid an
+        # infinite error loop.
+        current_len = len(objstms)
+
+        while current_len > 0:
+            # If we still have streams to expand, generate a list to
+            # iterate through. It can be in any order.
+            stream_list = list(objstms)
+
+            for stream_key in stream_list:
+                # Get the stream info.
+                stream  = self[stream_key]
+                desc    = stream.value
+                offset  = stream.stream_offset
+
+                # In particular, grab the length.
+                length  = desc["Length"]
+
+                if not isinstance(length, int):
+                    # If the length isn't an int, then it must be an
+                    # indirect reference. This can be ok. Check.
+                    length = self[length]
+
+                    if isinstance(length, PdfIndirectObject):
+                        # Yup! Grab the value itself.
+                        length = length.value
+
+                if not isinstance(length, int):
+                    # If we still don't have a length, then we'll have
+                    # to postpone this one until we do.
+                    continue
+
+                # TODO make it actually pull the data
+
+            old_len     = current_len
+            current_len = len(objstms)
+            if old_len == current_len:
+                # I don't want any infinite loops in here.
+                raise Exception("Failed to expand every object stream.")
+
+class Pdf:
+    # In the PDF spec, the last line of the PDF should simply be
+    # `%%EOF`, but implementation note 18 (appendix H) goes on to say
+    # that Acrobat Reader allows it to exist anywhere in the last 1024
+    # bytes of the file. Therefore I should also allow it to exist
+    # anywhere in the last 1024 bytes of the file.
+    eof_marker_buffer   = 0x400
+
+    def __init__ (self, file_object):
+        if not isinstance(file_object, FileReader):
+            # The user doesn't actually have to provide a FileReader
+            # object, but, if they don't, we still need to have one.
+            file_object = FileReader(file_object)
+
+        # Store the FileReader object.
+        self.pdf_file   = file_object
+
+        # Next, we initialize our object factory and read all the cross
+        # reference information we can get our hands on.
+        self.factory    = PdfObjectFactory(file_object)
+
+    def get_xref_data (self):
+        # Step one is to point at the trailing table (or stream).
+        self.point_factory_at_last_xref()
+
+    def point_factory_at_last_xref (self):
+        # Seek to the last 2048 bytes of the file.
+        self.pdf_file.seek_from_end(2 * self.eof_marker_buffer)
+
+        # Get the current position and read to the end.
+        current_pos = self.pdf_file.pos()
+        eof_str     = self.pdf_file.read()
+
+        # Find the EOF marker in the last 1024 bytes.
+        marker      = eof_str.rfind(b"%%EOF", self.eof_marker_buffer)
+
+        if marker == -1:
+            # Give up if we didn't find the marker.
+            raise Exception("Couldn't find %%EOF marker anywhere in" \
+                            " the last {:d} bytes".format(
+                                    self.eof_marker_buffer))
+
+        # We could just find the position of the startxref token, but we
+        # want to be ready for something stupid like a comment, so we're
+        # being just a little bit more careful.
+        token_pos   = None
+        while token_pos is None:
+            # Find it.
+            token_pos   = eof_str.rfind(b"startxref", 0, marker)
+
+            if token_pos == -1:
+                # If we can't find it, give up.
+                raise Exception("Couldn't find startxref token" \
+                                " anywhere in the last {:d}"    \
+                                " bytes".format(
+                                        2*self.eof_marker_buffer))
+
+            if token_pos > 0:
+                # If we're after the beginning of the string, checking
+                # the previous byte is a simple subtraction.
+                if eof_str[token_pos - 1] not in b"\n\r":
+                    # Update the marker to narrow our search, and reset
+                    # our token position.
+                    marker      = token_pos
+                    token_pos   = None
+
+            else:
+                # It's a bit silly, but hey, if we've actually found
+                # startxref an entire 1024 bytes before %%EOF, we may as
+                # well at least check to make sure it's at the beginning
+                # of a line.
+                if self.pdf_file[current_pos-1:1] not in b"\n\r":
+                    # If it's not, then, well, we'll continue, but we
+                    # definitely won't find anything.
+                    marker      = token_pos
+                    token_pos   = None
+
+        # OK! We've found what appears to be a valid startxref token. We
+        # can point our factory at it.
+        self.factory.seek(current_pos + token_pos)
+
+        if self.factory.read() != PdfToken(b"startxref"):
+            # If the next token isn't startxref, something really stupid
+            # must be going on, and I want no part in it. I give up.
+            raise Exception("Couldn't find startxref etc")
+
+        # The next thing should be the offset value for the cross
+        # reference table (or stream).
+        xref_pos    = self.factory.read()
+
+        if not isinstance(xref_pos, int):
+            # It's not an integer! What the heck
+            raise Exception("Expected integer after startxref token")
+
+        if xref_pos < 0:
+            # Buh-whuh why is it negative! After all this! Ugh
+            raise Exception("Expected positive startxref value")
+
+        # Awesome. We have located the valid offset for the last cross
+        # reference table in the PDF file. All that's left is to point
+        # our factory at it, and our work here is done.
+        self.factory.seek(xref_pos)
