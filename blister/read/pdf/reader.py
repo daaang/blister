@@ -622,6 +622,10 @@ class PdfObjectFactory:
                                                 repr(chr(self.byte))))
 
     def iter_read (self, end_delimiter):
+        """
+        Keep reading until the end delimiter is found; return an
+        iterator.
+        """
         # We'll actually pull out an entire stack first, so initialize
         # that stack.
         stack   = deque()
@@ -710,88 +714,3 @@ class PdfObjectFactory:
     def __repr__ (self):
         """Represent our position"""
         return "<{} {:08x}>".format(self.__class__.__name__, self.pos)
-
-class CrossReferenceHistory (Mapping):
-
-    def __init__ (self, object_factory):
-        self.factory = object_factory
-        self.
-
-########################################################################
-
-def CrossReferenceHistory (Sequence):
-    XRefInUseEntry  = namedtuple("XRefInUseEntry", ("offset",
-                                                    "address"))
-
-    prev            = PdfName("Prev")
-
-    def __init__ (self):
-        self.history    = deque()
-        self.up_to_date = [ ]
-
-    def import (self, pdf_footer):
-        self.history.appendleft(pdf_footer)
-
-        xref, trailer = pdf_footer
-
-        old_max = len(self.up_to_date) - 1
-        new_max = max(xref)
-
-        if new_max > old_max:
-            self.up_to_date += [None] * (new_max - old_max)
-
-        for key, value in xref:
-            if self.up_to_date[key] is None:
-                self.up_to_date[key] = value
-
-        return trailer.get(self.prev, None)
-
-    def __getitem__ (self, key):
-        return self.up_to_date[key]
-
-    def __len__ (self):
-        return len(self.up_to_date)
-
-    def in_use_objects (self):
-        for number, entry in enumerate(self.up_to_date):
-            if isinstance(entry, InUseEntryTuple):
-                yield self.XRefInUseEntry(entry.offset,
-                        ObjectAddress(number, entry.generation))
-
-def Pdf:
-    increment   = 0x100
-
-    def __init__ (self, filestream):
-        self.pdf        = FileReader(filestream)
-        self.version    = None
-        expected        = b"%PDF-"
-
-        self.pdf.seek(0)
-        if self.pdf[len(expected)] == expected:
-            self.version = b""
-            char = self.pdf[1]
-
-            while char not in ("\r", "\n"):
-                self.version += char
-                char = self.pdf[1]
-
-        self.pdf.seek_from_end()
-        self.eof        = self.pdf.pos()
-
-        end_chunk       = b""
-        start           = self.eof
-
-        while end_chunk.find(b"startxref") == -1 and start >= 0:
-            start      -= self.increment
-            end_chunk   = self.pdf[start:self.increment] + end_chunk
-
-        self.pdf.seek(start + end_chunk.index(b"startxref"))
-        self.pdf.seek(self.get_content_stack()[0][0])
-
-        self.xref       = CrossReferenceHistory()
-        footer          = self.get_content_stack("xref")[-1]
-
-
-
-    def get_content_stack (self, stop = None):
-        return PdfContentStack(self.pdf, stop)
