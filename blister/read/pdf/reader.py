@@ -373,6 +373,51 @@ class PdfObjectFactory:
         self.byte   = self.pdf[1][0]
 
     def read (self, end_delimiter = False):
+        """Read the next object from the content stream
+
+        Return values:
+
+        1.  Static values:
+
+            -   PdfObjectFactory.EndDelimiter is a result that confirms that
+                we've found the delimiter that you asked to look for (if you
+                asked for one at all). If you set it to None, then this
+                signifies the end of the content stream.
+
+            -   None means `null` was found.
+
+            -   True means `true` was found.
+
+            -   False means `false` was found.
+
+        2.  If the result is an int, then we found an integer (i.e. a
+            number without a decimal point).
+
+        3.  If the result is a Fraction, then we found a number with a
+            decimal point.
+
+        4.  If the result is a PdfToken, then we found some other series
+            of regular (i.e. nondelimiter nonwhitespace) characters not
+            mentioned above.
+
+        5.  If the result is a PdfName, then we found a token prefixed
+            by a `/` character.
+
+        6.  If the result is a list, then we found an array. The values
+            in the list will conform recursively to all these rules.
+
+        7.  If the result is a PdfDict, then we found a dictionary. The
+            entities in the dictionary will conform recursively to all
+            these rules.
+
+        8.  If the result is a PdfHex, the we found a string contained
+            in angle brackets (rather than a typical string contained in
+            parentheses).
+
+        9.  If the result is a bytes object, then we found a regular
+            string contained in parentheses.
+        """
+
         while True:
             # This loop ends by raising an exception. Any continuations
             # and breaks are explicit
