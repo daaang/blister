@@ -5,7 +5,6 @@ from io             import  BytesIO, BufferedReader, SEEK_END
 from sys            import  version_info
 
 from ..exceptions   import  UnexpectedEOF
-from ..internal     import  bytes_to_int
 
 if version_info[0] > 2:
     file = BufferedReader
@@ -121,7 +120,7 @@ class FileReader:
 
     def bytes_to_int(self, bytestring):
         """Return an int using our internal byte order flag"""
-        return bytes_to_int(bytestring, self.byte_order)
+        return int.from_bytes(bytestring, self.byte_order)
 
     def read_int (self, length):
         """Read an int from the file"""

@@ -112,5 +112,41 @@ class TiffOffsetsDontMatchBytecounts (TiffError):
     pass
 
 class TiffFloatError (TiffError):
-    """I don't know how to make a float {:d} byte{} long"""
+    """I don't know how to make a float {:d} byte{} long."""
+    pass
+
+class Jpeg2000Error (FileReadError):
+    """Catch-all for jp2 errors."""
+    pass
+
+class Jpeg2000DuplicateKey (Jpeg2000Error):
+    """Key {} appears more than once even though it shouldn't."""
+    pass
+
+class Jpeg2000CodeStreamError (Jpeg2000Error):
+    """Catch-all for code stream errors."""
+    pass
+
+class Jpeg2000NoSOCMarker (Jpeg2000CodeStreamError):
+    """Code stream didn't begin with the required SOC marker."""
+    pass
+
+class Jpeg2000NoSIZMarker (Jpeg2000CodeStreamError):
+    """Code stream's second marker isn't SIZ, as is required."""
+    pass
+
+class Jpeg2000UnknownSubBlock (Jpeg2000CodeStreamError):
+    """Unknown sub-block within {}, named {}."""
+    pass
+
+class Jpeg2000SIZIncorrectLength (Jpeg2000CodeStreamError):
+    """Lsiz value ({:d}) does not match actual SIZ length ({:d})."""
+    pass
+
+class Jpeg2000SIZParameterTooSmall (Jpeg2000CodeStreamError):
+    """SIZ parameter {} cannot be less than {:d} ({:d} given)."""
+    pass
+
+class Jpeg2000SIZParameterTooLarge (Jpeg2000CodeStreamError):
+    """SIZ parameter {} must be less than {:d} ({:d} given)."""
     pass
