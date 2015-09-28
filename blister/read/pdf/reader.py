@@ -37,11 +37,11 @@ class PdfHex:
 
         if self.is_even:
             # If it's even, then cool, I can just convert it.
-            self.string = bytes.fromhex(hexstring)
+            self.string = bytes.fromhex(hexstring.decode("ascii"))
 
         else:
             # If not, I'll need to add a `0` byte before converting it.
-            self.string = bytes.fromhex(hexstring + b"0")
+            self.string = bytes.fromhex(hexstring.decode("ascii") + "0")
 
     def __bytes__ (self):
         """Get the bytes"""
@@ -62,25 +62,33 @@ class PdfName (Hashable):
         """Takes one argumet: the string of bytes following the vergule
         in the PDF content stream"""
 
-        # Follow each hashtag escape to get a new, more accurate string
-        # of bytes.
-        escaped         = self.re_hashtag.sub(self.hashtag_repl,
-                                              name_bytes)
+        if isinstance(name_bytes, str):
+            self.name       = name_bytes
+            self.utf8       = True
 
-        try:
-            # Try to decode using UTF-8.
-            self.name   = escaped.decode("utf_8")
-            self.utf8   = True
+            self.original   = None
 
-        except UnicodeDecodeError:
-            # If we can't, we'll decode using some other possibilities,
-            # but we'll also make a note that this is not UTF-8.
-            self.name   = safe_decode(escaped)
-            self.utf8   = False
+        else:
+            # Follow each hashtag escape to get a new, more accurate
+            # string of bytes.
+            escaped         = self.re_hashtag.sub(self.hashtag_repl,
+                                                  name_bytes)
 
-        # Also track the original bytes in case anyone wants to see
-        # them.
-        self.original   = name_bytes
+            try:
+                # Try to decode using UTF-8.
+                self.name   = escaped.decode("utf_8")
+                self.utf8   = True
+
+            except UnicodeDecodeError:
+                # If we can't, we'll decode using some other
+                # possibilities, but we'll also make a note that this is
+                # not UTF-8.
+                self.name   = safe_decode(escaped)
+                self.utf8   = False
+
+            # Also track the original bytes in case anyone wants to see
+            # them.
+            self.original   = name_bytes
 
     def __str__ (self):
         """Convert to unicode"""
@@ -170,11 +178,11 @@ class PdfDict (Mapping):
         for key, index in self.insert_order:
             yield self.internal_dict[key][index]
 
-    def __dict__ (self):
+    def get_python_dict (self):
         """Return a simple dict"""
         result = { }
 
-        for key, values in self.internal_dict:
+        for key, values in self.internal_dict.items():
             # How many values are associated with this key?
             if len(values) == 1 and \
                     values[0] is not PdfObjectFactory.EndDelimiter:
@@ -263,11 +271,6 @@ class PdfIndirectObject:
         if obj_token != PdfToken(b"obj"):
             # Be sure it's a valid indirect object.
             raise Exception("The third token should be obj.")
-
-        if isinstance(self.value, PdfDict):
-            # If we're a dictionary, be sure to use the python version,
-            # since the PDF one is really just for debugging.
-            self.value = dict(self.value)
 
 class PdfStream (PdfIndirectObject):
     decodable_filters   = {
@@ -540,7 +543,7 @@ class PdfObjectFactory:
                 self.step()
                 continue
 
-            if self.byte = self.delim_comment:
+            if self.byte == self.delim_comment:
                 # This begins a comment.
                 while self.step() not in self.endings:
                     # Loop on forward until we reach an EOL (or EOF).
@@ -623,9 +626,10 @@ class PdfObjectFactory:
 
                     if self.byte != end_byte:
                         # Be sure we have a double-bracket close.
-                        self.pdf.error(-2, "Expected '>>', not '>'")
+                        raise Exception("Expected '>>', not '>'")
 
-                    return mapping
+                    self.step()
+                    return mapping.get_python_dict()
 
                 else:
                     # The second byte doesn't match the first, so this
@@ -639,12 +643,12 @@ class PdfObjectFactory:
                     if self.byte in self.whitespace:
                         # If this byte is whitespace, we can ignore it.
                         # We'll just initialize our byte list.
-                        hex_list = bytearray()
+                        hex_list = [ ]
 
                     else:
                         # Otherwise, we'll initialize the list with this
                         # byte in it.
-                        hex_list = bytearray(self.byte)
+                        hex_list = [self.byte]
 
                     while self.hardstep() != end_byte:
                         # Keep reading until the end delimiter.
@@ -700,7 +704,7 @@ class PdfObjectFactory:
                             # Get the stated value of the byte.
                             value = self.byte - self.zero
 
-                            if value < 0 or value >= 010:
+                            if value < 0 or value >= 8:
                                 # This isn't an octal, so this isn't a
                                 # valid escape at all. We backtrack so
                                 # as to ignore the backslash completely.
@@ -715,7 +719,7 @@ class PdfObjectFactory:
                                 # digit.
                                 next_digit = self.hardstep() - self.zero
 
-                                if next_digit < 0 or next_digit >= 010:
+                                if next_digit < 0 or next_digit >= 8:
                                     # OK, so this one isn't a digit. Go
                                     # back and stop looking.
                                     self.backstep()
@@ -723,7 +727,7 @@ class PdfObjectFactory:
 
                                 # It is another digit! Add it to the
                                 # value.
-                                value *= 010
+                                value *= 8
                                 value += next_digit
 
                             # Add the octal value.
@@ -763,7 +767,7 @@ class PdfObjectFactory:
             #
             # Everything else is handled. These five are delimiters that
             # don't delimit anything. Error out.
-            self.pdf.error(-1, "Unexpected {} byte".format(
+            raise Exception(-1, "Unexpected {} byte".format(
                                                 repr(chr(self.byte))))
 
     def iter_read (self, end_delimiter):
@@ -804,6 +808,7 @@ class PdfObjectFactory:
 
             # Whatever just happened here, append it to our stack.
             stack.append(obj)
+            obj = self.read(end_delimiter)
 
         # All that's left is to iterate through the stack.
         return iter(stack)
@@ -1085,6 +1090,7 @@ class PdfXrefHistory:
                      xref_stream,
                      section_data   = { },
                      is_hybrid      = False):
+
         # Be sure we actually have a stream.
         assert isinstance(xref_stream, PdfStream)
         assert xref_stream.value["Type"] == PdfDictType.XRef
@@ -1152,6 +1158,7 @@ class PdfXrefHistory:
             return read_trailer(factory, stream_dict)
 
     def read_table (self, factory):
+
         # In the end, we'll have a dictionary keyed on object numbers.
         section_data = { }
 
@@ -1166,7 +1173,7 @@ class PdfXrefHistory:
                 self.cross_refs.insert(0, section_data)
 
                 # Next up is adding the trailer.
-                return self.read_trailer(factory, dict(factory.read()))
+                return self.read_trailer(factory, factory.read())
 
             # Otherwise, we must have a cross reference subsection to
             # read. Get the second number (the object count).
@@ -1198,7 +1205,7 @@ class PdfXrefHistory:
     def read_trailer (self, factory, trailer):
         # These two must be in there.
         size    = trailer["Size"]
-        root    = trailer["Root"]
+        root    = trailer.get("Root", None)
 
         # And these two might be in there.
         info    = trailer.get("Info", None)
@@ -1315,7 +1322,7 @@ class PdfCrossReference (Mapping):
         if obj_num in self.internal_dict:
             # If we do have this object by number, make sure the key
             # matches.
-            return gen_num = self.internal_dict[obj_num].generation
+            return gen_num == self.internal_dict[obj_num].generation
 
         else:
             # If we don't, then we don't.
@@ -1359,7 +1366,7 @@ class PdfCrossReference (Mapping):
         # newest.
         for xref in xref_history.cross_refs:
             # We'll look at the actual entries in no particular order.
-            for obj_num, value in xref:
+            for obj_num, value in xref.items():
                 if obj_num > self.max_object_num:
                     # If this is the largest entry we've yet seen, we
                     # should make a note of it.
@@ -1518,10 +1525,6 @@ class PdfCrossReference (Mapping):
                     # jumping around in the stream. Read the object.
                     stream_factory.seek(off)
                     value   = stream_factory.read()
-
-                    if isinstance(value, PdfDict):
-                        # If it's a dictionary, just get the python one.
-                        value   = dict(value)
 
                     # Update its value in the internal storage.
                     self.internal_dict[num] = self.EntryTuple(0, value)
