@@ -101,9 +101,26 @@ def decode_ASCII85 (encoded_bytes, parms = { }):
                 result += total.to_bytes(four, "big")
 
     if len(values) != 0:
-        # Now that we've looked at the entire stream, extra characters
-        # are not allowed.
-        raise Exception("Extra characters")
+        # If there are still values in there, then we have a partial
+        # group to look at. How many bytes are missing?
+        missing = group_size - len(values)
+
+        if missing >= four:
+            # Not enough extra data to actually do anything with.
+            raise Exception("4 missing bytes is too many")
+
+        # Add zeroes as the missing values.
+        values += [0] * missing
+
+        # We build a total like normal, now that we have a group of 5
+        # values for sure.
+        total   = 0
+        for i in multipliers:
+            total  += i * values.pop(0)
+
+        # We add this result *almost* like normal, except we strip off
+        # the missing number of bytes.
+        result += total.to_bytes(four, "big")[0:-missing]
 
     # If we made it to here, we have a decoded string. Awesome!
     return result
