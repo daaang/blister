@@ -6,7 +6,6 @@ from collections    import  namedtuple, Mapping, MutableMapping, \
                             Sequence, Iterable
 from fractions      import  Fraction
 from itertools      import  count
-from numpy          import  nan as NaN, inf as infinity
 from sys            import  version_info
 
 from ...exceptions  import  TiffUnknownByteOrder,                      \
