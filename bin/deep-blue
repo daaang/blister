@@ -8,7 +8,7 @@ from re                     import  compile as re_compile
 from sys                    import  argv
 
 from blister.write.pdf      import  PrePdf, PrePdfReference, \
-                                    PrePdfStream
+                                    PrePdfStream, PrePdfName
 from blister.read.tiff      import  Tiff
 from blister.read.jpeg2000  import  Jpeg2000
 from blister.read.pdf       import  Pdf
@@ -37,8 +37,148 @@ class DeepBluePdf:
 
             useful_files[seq][ext]  = os_path_join(path_to_dir, i)
 
-        self.useful = useful_files
-        self.ignore = ignore_files
+        self.pages   = [ ]
+        for i in range(1, len(useful_files) + 1):
+            files   = useful_files.pop(i)
+
+            thefile = open(files["pdf"], "rb")
+            pdf     = Pdf(thefile)
+            thefile.close()
+
+            if "jp2" in files:
+                thefile = open(files["jp2"], "rb")
+                image   = Jpeg2000(thefile)
+                thefile.close()
+
+            else:
+                thefile = open(files["tif"], "rb")
+                image   = Tiff(thefile)
+                thefile.close()
+
+            self.pages.append((pdf, image))
+
+        assert len(useful_files) == 0
+
+    def build_pdf (self):
+        pdf         = PrePdf()
+
+        procset     = pdf.insert([
+            PrePdfName("PDF"),
+            PrePdfName("Text"),
+            PrePdfName("ImageB"),
+            PrePdfName("ImageI"),
+            PrePdfName("ImageC")])
+
+        fonts       = {
+            "F1": { "Type":     PrePdfName("Font"),
+                    "Subtype":  PrePdfName("Type1"),
+                    "Name":     PrePdfName("F1"),
+                    "BaseFont": PrePdfName("Helvetica"),
+                    "Encoding": PrePdfName("WinAnsiEncoding") },
+            "F2": { "Type":     PrePdfName("Font"),
+                    "Subtype":  PrePdfName("Type1"),
+                    "Name":     PrePdfName("F2"),
+                    "BaseFont": PrePdfName("Helvetica-Bold"),
+                    "Encoding": PrePdfName("WinAnsiEncoding") },
+            "F3": { "Type":     PrePdfName("Font"),
+                    "Subtype":  PrePdfName("Type1"),
+                    "Name":     PrePdfName("F3"),
+                    "BaseFont": PrePdfName("Helvetica-Oblique"),
+                    "Encoding": PrePdfName("WinAnsiEncoding") },
+            "F4": { "Type":     PrePdfName("Font"),
+                    "Subtype":  PrePdfName("Type1"),
+                    "Name":     PrePdfName("F4"),
+                    "BaseFont": PrePdfName("Helvetica-BoldOblique"),
+                    "Encoding": PrePdfName("WinAnsiEncoding") },
+            "F5": { "Type":     PrePdfName("Font"),
+                    "Subtype":  PrePdfName("Type1"),
+                    "Name":     PrePdfName("F5"),
+                    "BaseFont": PrePdfName("Times-Roman"),
+                    "Encoding": PrePdfName("WinAnsiEncoding") },
+            "F6": { "Type":     PrePdfName("Font"),
+                    "Subtype":  PrePdfName("Type1"),
+                    "Name":     PrePdfName("F6"),
+                    "BaseFont": PrePdfName("Times-Bold"),
+                    "Encoding": PrePdfName("WinAnsiEncoding") },
+            "F7": { "Type":     PrePdfName("Font"),
+                    "Subtype":  PrePdfName("Type1"),
+                    "Name":     PrePdfName("F7"),
+                    "BaseFont": PrePdfName("Times-Italic"),
+                    "Encoding": PrePdfName("WinAnsiEncoding") },
+            "F8": { "Type":     PrePdfName("Font"),
+                    "Subtype":  PrePdfName("Type1"),
+                    "Name":     PrePdfName("F8"),
+                    "BaseFont": PrePdfName("Times-BoldItalic"),
+                    "Encoding": PrePdfName("WinAnsiEncoding") },
+            "F9": { "Type":     PrePdfName("Font"),
+                    "Subtype":  PrePdfName("Type1"),
+                    "Name":     PrePdfName("F9"),
+                    "BaseFont": PrePdfName("Courier"),
+                    "Encoding": PrePdfName("WinAnsiEncoding") },
+            "F10": {"Type":     PrePdfName("Font"),
+                    "Subtype":  PrePdfName("Type1"),
+                    "Name":     PrePdfName("F10"),
+                    "BaseFont": PrePdfName("Courier-Bold"),
+                    "Encoding": PrePdfName("WinAnsiEncoding") },
+            "F11": {"Type":     PrePdfName("Font"),
+                    "Subtype":  PrePdfName("Type1"),
+                    "Name":     PrePdfName("F11"),
+                    "BaseFont": PrePdfName("Courier-Oblique"),
+                    "Encoding": PrePdfName("WinAnsiEncoding") },
+            "F12": {"Type":     PrePdfName("Font"),
+                    "Subtype":  PrePdfName("Type1"),
+                    "Name":     PrePdfName("F12"),
+                    "BaseFont": PrePdfName("Courier-BoldOblique"),
+                    "Encoding": PrePdfName("WinAnsiEncoding") },
+        }
+
+        fontref     = { }
+        for name, fdict in fonts:
+            fontref[name] = PrePdfReference(pdf.insert(fdict))
+
+        fontref     = pdf.insert(fontref)
+
+        page_root   = pdf.insert({
+            "Type":     PrePdfName("Pages"),
+            "Count":    len(self.pages)})
+
+        pages       = [ ]
+        for pagepdf, pageimg in self.pages:
+            # The desired structure is:
+            #
+            # Page:
+            #   Type:       /Page
+            #   Parent:     page_root
+            #   MediaBox:   [0, 0, x, y]
+            #   CropBox:    [0, 0, x, y]
+            #   Contents:   [*1]
+            #   Resources:
+            #     XObject:  {Im0: *2}
+            #     ProcSet:  procset
+            #     Font:     fontref
+            # &1:
+            #   Filter:     /FlateDecode
+            #   Length:     ???
+            # &2:
+            #   Type:       /XObject
+            #   Subtype:    /Image
+            #   Filter:     /CCITTFaxDecode or /JPXDecode
+            #   Length:     ???
+            #   Width:      x
+            #   Height:     y
+            #   BitsPerComponent: 1
+            #   ColorSpace: /DeviceGray or /DeviceRGB
+            #   DecodeParms: {K: -1, Columns: x}
+            #   Decode:     [0, 1]
+            #
+            # The main thing to notice here is that the only real
+            # information I need is image stream info, width, and
+            # height. Beyond that, I suppose I should confirm that my
+            # font and xobject dictionaries match with prime's.
+            pass
+
+        pdf[page_root]["Kids"]  = pages
+        pdf[pdf.root]["Pages"]  = PrePdfReference(page_root)
 
     def write (self):
         keys = list(self.useful.keys())

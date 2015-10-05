@@ -634,6 +634,7 @@ class PrePdf:
 
     def __getitem__ (self, key):
         # Just get the dang value.
+        self.objects[key].modified = True
         return self.objects[key].value
 
     def __delitem__ (self, key):
