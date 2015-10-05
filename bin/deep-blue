@@ -1,4 +1,7 @@
 #!/usr/bin/env python3.3
+# Copyright (c) 2015 The Regents of the University of Michigan.
+# All Rights Reserved. Licensed according to the terms of the Revised
+# BSD License. See LICENSE.txt for details.
 from os                     import  listdir
 from os.path                import  join    as os_path_join
 from re                     import  compile as re_compile
