@@ -1,0 +1,63 @@
+#!/usr/bin/env python3.3
+from os                     import  listdir
+from os.path                import  join    as os_path_join
+from re                     import  compile as re_compile
+from sys                    import  argv
+
+from blister.write.pdf      import  PrePdf, PrePdfReference, \
+                                    PrePdfStream
+from blister.read.tiff      import  Tiff
+from blister.read.jpeg2000  import  Jpeg2000
+from blister.read.pdf       import  Pdf
+
+class DeepBluePdf:
+    re_use_file = re_compile(r"^[0p]([0-9]{7})\.(pdf|tif|jp2)$")
+
+    def __init__ (self, path_to_dir):
+        useful_files    = { }
+        ignore_files    = set()
+
+        for i in listdir(path_to_dir):
+            match           = self.re_use_file.match(i)
+
+            if match is None:
+                ignore_files.add(i)
+                continue
+
+            seq_str, ext    = match.groups()
+            seq             = int(seq_str)
+
+            if seq not in useful_files:
+                useful_files[seq]   = { }
+
+            assert ext not in useful_files[seq]
+
+            useful_files[seq][ext]  = os_path_join(path_to_dir, i)
+
+        self.useful = useful_files
+        self.ignore = ignore_files
+
+    def write (self):
+        keys = list(self.useful.keys())
+        keys.sort()
+
+        print("Useful:")
+
+        for key in keys:
+            secs = list(self.useful[key].keys())
+            secs.sort()
+
+            for sec in secs:
+                print("{:>7d} {} {}".format(key, sec,
+                    self.useful[key][sec]))
+
+        print("\nUseless:")
+
+        keys = list(self.ignore)
+        keys.sort()
+        for key in keys:
+            print("  " + key)
+
+for arg in argv[1:]:
+    pdf = DeepBluePdf(arg)
+    pdf.write()
