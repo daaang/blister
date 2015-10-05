@@ -470,8 +470,16 @@ class PdfObjectFactory:
         pass
 
     def __init__ (self, pdf_file):
-        # Internalize the file object.
-        self.pdf    = pdf_file
+        if isinstance(pdf_file, FileReader):
+            # We want a FileReader object, and that's what we have!
+            self.pdf    = pdf_file
+
+        else:
+            # We want a FileReader object, and that's what we'll get!
+            self.pdf    = FileReader(pdf_file)
+
+        # We also want to track our position and current character
+        # separately.
         self.pos    = self.pdf.pos()
         self.byte   = self.pdf[1][0]
 
@@ -509,7 +517,7 @@ class PdfObjectFactory:
         6.  If the result is a list, then we found an array. The values
             in the list will conform recursively to all these rules.
 
-        7.  If the result is a PdfDict, then we found a dictionary. The
+        7.  If the result is a dict, then we found a dictionary. The
             entities in the dictionary will conform recursively to all
             these rules.
 
@@ -1013,6 +1021,18 @@ class PdfTrailer:
         self.info           = info
         self.original_id    = original_id
         self.current_id     = current_id
+
+    def __repr__ (self):
+        values  = [
+            "size: {}".format(repr(self.size)),
+            "root: {:d} {:d} R".format(*self.root),
+        ]
+
+        if self.info is not None:
+            values.append("info: {:d} {:d} R".format(*self.info))
+
+        return "<{} {}>".format(self.__class__.__name__,
+                                ", ".join(values))
 
 class PdfObjEntry:
     FreeEntry   = 0
@@ -1569,6 +1589,197 @@ class PdfCrossReference (Mapping):
 
         # Return the actual value.
         return value
+
+class PdfContentStream:
+    expected_tokens     = {
+        PdfToken(b"BT"): (PdfToken(b"ET"), {
+            PdfToken(b"Tc"):    1,
+            PdfToken(b"Tw"):    1,
+            PdfToken(b"Tz"):    1,
+            PdfToken(b"TL"):    1,
+            PdfToken(b"Tf"):    2,
+            PdfToken(b"Tr"):    1,
+            PdfToken(b"Ts"):    1,
+
+            PdfToken(b"Td"):    2,
+            PdfToken(b"TD"):    2,
+            PdfToken(b"Tm"):    6,
+            PdfToken(b"T*"):    0,
+
+            PdfToken(b"Tj"):    1,
+            PdfToken(b"'"):     1,
+            PdfToken(b'"'):     3,
+            PdfToken(b"TJ"):    1,
+        }),
+
+        PdfToken(b"q"): (PdfToken(b"Q"), {
+            PdfToken(b"cm"):    6,
+            PdfToken(b"w"):     1,
+            PdfToken(b"J"):     1,
+            PdfToken(b"j"):     1,
+            PdfToken(b"M"):     1,
+            PdfToken(b"d"):     2,
+            PdfToken(b"ri"):    1,
+            PdfToken(b"i"):     1,
+            PdfToken(b"gs"):    1,
+            PdfToken(b"Do"):    1,
+        }),
+    }
+
+    # I want a dictionary of dictionaries of dictionaries, and I want it
+    # always to at the very least match the above dictionary, so I think
+    # it's best to build it automagically.
+    expected_resources  = { }
+
+    for key in expected_tokens:
+        # Make sure it's ready for every possible section.
+        expected_resources[key.token] = { }
+
+    # This iterable tuple is where I'm actually putting the data.
+    for section, operator, index, resource in (
+            (b"BT",    b"Tf",  0,  "Font"),
+            (b"q",     b"Do",  0,  "XObject")):
+        if operator not in expected_resources[section]:
+            # If I haven't seen this particular operator in this
+            # particular section yet, give it an empty dict.
+            expected_resources[section][operator] = { }
+
+        # Either way, add this particular argement index and its
+        # resource dictionary name.
+        expected_resources[section][operator][index] = resource
+
+    SectionTuple        = namedtuple("SectionTuple",    ("start",
+                                                         "stop",
+                                                         "section"))
+    OperatorTuple       = namedtuple("OperatorTuple",   ("token",
+                                                         "args"))
+
+    def __init__ (self, stream_data):
+        # We really just want a factory.
+        factory         = PdfObjectFactory(stream_data)
+
+        # Interpret the content stream.
+        self.sections   = self.read_sections(factory)
+
+        # And build a dictionary of resources used by the stream that
+        # exist elsewhere in the pdf (and will have to be named in the
+        # page's resource dictionary).
+        self.resources  = self.find_resources()
+
+    def read_sections (self, factory):
+        # We'll return a deque of sections.
+        result  = deque()
+
+        while True:
+            # Read the next thing, and be ok with the end of the file.
+            start           = factory.read(None)
+
+            if start is factory.EndDelimiter:
+                # If we reach the end of the file, we return our list of
+                # sections.
+                return result
+
+            if start not in self.expected_tokens:
+                # Otherwise, if we aren't expecting the section
+                # beginning that we got, then we need to raise an
+                # exception.
+                raise Exception("Can't handle {}".format(repr(start)))
+
+            # Get the ending token and the dictionary of expected
+            # tokens.
+            end, expected   = self.expected_tokens[start]
+
+            # We'll represent unaccounted-for 
+            stack           = deque()
+
+            while True:
+                # Get the next value.
+                value   = factory.read()
+
+                if value == end:
+                    # It's the token that signifies the end of the
+                    # section! Time to stop.
+                    break
+
+                if value in expected:
+                    # We were looking for this value! We start building
+                    # a new queue of arguments popped off our stack of
+                    # all values.
+                    args    = deque()
+
+                    for i in range(expected[value]):
+                        # Pop off whatever is the right number of
+                        # arguments and push them onto our argument
+                        # queue.
+                        args.appendleft(stack.pop())
+
+                    # We convert that deque to a tuple and push an
+                    # OperatorTuple back into the value stack.
+                    stack.append(self.OperatorTuple(value.token,
+                                                    tuple(args)))
+
+                elif isinstance(value, PdfToken):
+                    # Tokens are not ok.
+                    raise Exception("Unknown token in {}: {}".format(
+                                    repr(start), repr(value)))
+
+                else:
+                    # Push it on in!
+                    stack.append(value)
+
+            # Add the section to the resulting section list.
+            result.append(self.SectionTuple(start.token,
+                                            end.token,
+                                            stack))
+
+    def find_resources (self):
+        # In the end, I want to return a dictionary.
+        resources   = { }
+
+        for start, end, section in self.sections:
+            # Now that I've created the 3-dimensinoal dictionary, I can
+            # just grab the part I want for this particular section.
+            current_exp = self.expected_resources[start]
+
+            for operator_tuple in section:
+                if not isinstance(operator_tuple, self.OperatorTuple):
+                    # Assert that each thing in here is an operator
+                    # tuple like it should be. If it isn't, then there
+                    # must be some operands that aren't part of some
+                    # operator.
+                    raise Exception("EXTRA OPERANDS >:(")
+
+                # Ok cool, go ahead and split the dang thing.
+                operator, args = operator_tuple
+
+                # Now I look at each operator tuple in the section. If
+                # this operator isn't present in our expected resources
+                # dictionary, then I'll pretend it's got an empty
+                # dictionary.
+                for index, resource in current_exp.get(
+                        operator, { }).items():
+                    # I'll want to add it under the resource name.
+                    if resource not in resources:
+                        # If we haven't seen this resource name yet,
+                        # then I create a new set for it first.
+                        resources[resource] = set()
+
+                    # Pull the name argument.
+                    name    = args[index]
+
+                    if not isinstance(name, PdfName):
+                        # Assert that we have an actual name. Gotta be a
+                        # name yo
+                        raise Exception("What it's gotta be a name")
+
+                    # Awesome! Add the string version of the name to our
+                    # result, since the string version is what we'll
+                    # actually be using to access the thing in the
+                    # python version of the dictionaries.
+                    resources[resource].add(str(name))
+
+        # Return dat dict.
+        return resources
 
 class Pdf:
     def __init__ (self, file_object):
