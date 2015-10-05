@@ -1781,7 +1781,7 @@ class PdfContentStream:
         # Return dat dict.
         return resources
 
-class Pdf:
+class Pdf (Mapping):
     def __init__ (self, file_object):
         if not isinstance(file_object, FileReader):
             # The user doesn't actually have to provide a FileReader
@@ -1803,3 +1803,18 @@ class Pdf:
         # themselves.
         self.trailer    = xref_history.trailers[-1]
         self.objects    = PdfCrossReference(factory, xref_history)
+
+    def __getitem__ (self, key):
+        return self.objects[key]
+
+    def __len__ (self):
+        return len(self.objects)
+
+    def __iter__ (self):
+        return iter(self.objects)
+
+    def __contains (self, key):
+        return key in self.objects
+
+    def follow (self, value):
+        return self.objects.follow_reference(value)

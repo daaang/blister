@@ -2,7 +2,7 @@
 # All Rights Reserved. Licensed according to the terms of the Revised
 # BSD License. See LICENSE.txt for details.
 
-def deflatten (*args, **kwargs) -> iter:
+def deflatten (*args, **kwargs):
     """Deflatten a flat iterable into an iterable of tuples.
 
     Args:

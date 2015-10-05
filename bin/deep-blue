@@ -3,20 +3,23 @@
 # All Rights Reserved. Licensed according to the terms of the Revised
 # BSD License. See LICENSE.txt for details.
 from os                     import  listdir
-from os.path                import  join    as os_path_join
+from os.path                import  join    as os_path_join, getsize,
+                                    split   as os_path_split, abspath
 from re                     import  compile as re_compile
 from sys                    import  argv
 
-from blister.write.pdf      import  PrePdf, PrePdfReference, \
-                                    PrePdfStream, PrePdfName
-from blister.read.tiff      import  Tiff
+from blister.write.pdf      import  PrePdf, PrePdfReference,    \
+                                    PrePdfStream, PrePdfName,   \
+                                    PrePdfObject
+from blister.read.tiff      import  Tiff, IFDTag
 from blister.read.jpeg2000  import  Jpeg2000
-from blister.read.pdf       import  Pdf
+from blister.read.pdf       import  Pdf, PdfContentStream
 
 class DeepBluePdf:
     re_use_file = re_compile(r"^[0p]([0-9]{7})\.(pdf|tif|jp2)$")
 
     def __init__ (self, path_to_dir):
+        path_to_dir     = abspath(path_to_dir)
         useful_files    = { }
         ignore_files    = set()
 
@@ -41,23 +44,28 @@ class DeepBluePdf:
         for i in range(1, len(useful_files) + 1):
             files   = useful_files.pop(i)
 
-            thefile = open(files["pdf"], "rb")
+            pdffile = files["pdf"]
+            thefile = open(pdffile, "rb")
             pdf     = Pdf(thefile)
             thefile.close()
 
             if "jp2" in files:
-                thefile = open(files["jp2"], "rb")
+                imgfile = files["jp2"]
+                thefile = open(imgfile, "rb")
                 image   = Jpeg2000(thefile)
                 thefile.close()
 
             else:
-                thefile = open(files["tif"], "rb")
+                imgfile = files["tif"]
+                thefile = open(imgfile, "rb")
                 image   = Tiff(thefile)
                 thefile.close()
 
-            self.pages.append((pdf, image))
+            self.pages.append((pdf, image, pdffile, imgfile))
 
         assert len(useful_files) == 0
+
+        root, self.volume   = os_path_split(path_to_dir)
 
     def build_pdf (self):
         pdf         = PrePdf()
@@ -142,8 +150,13 @@ class DeepBluePdf:
             "Type":     PrePdfName("Pages"),
             "Count":    len(self.pages)})
 
+        fake_obj    = PrePdfObject(None)
+
         pages       = [ ]
-        for pagepdf, pageimg in self.pages:
+        for pagepdf, pageimg, pdffile, imgfile in self.pages:
+            # I've tested this, and I should actually have the correct
+            # objects and everything! AWESOME
+            #
             # The desired structure is:
             #
             # Page:
@@ -175,13 +188,109 @@ class DeepBluePdf:
             # information I need is image stream info, width, and
             # height. Beyond that, I suppose I should confirm that my
             # font and xobject dictionaries match with prime's.
-            pass
+            proot   = pagepdf.follow(pagepdf.trailer.root)
+            ppage   = pagepdf.follow(proot["Pages"])
+
+            while "Kids" in ppage:
+                kids    = pagepdf.follow(ppage["Kids"])
+                assert len(kids) == 1
+
+                ppage   = pagepdf.follow(kids[0])
+
+            assert ppage["MediaBox"] == ppage["CropBox"]
+            pcont   = pagepdf.follow(ppage["Contents"])
+            pres    = pagepdf.follow(ppage["Resources"])
+            pfont   = pagepdf.follow(pres["Font"])
+            pimg    = pagepdf.follow(pres["XObject"])
+
+            while isinstance(pcont, list):
+                assert len(pcont) == 1
+                pcont   = pagepdf.follow(pcont[0])
+
+            assert isinstance(pcont, PdfStream)
+
+            pfile   = open(pdffile, "rb")
+            pcont.decode_stream_data(pagepdf.follow(pcont["Length"]),
+                                     pfile)
+            pfile.close()
+
+            pcont   = PdfContentStream(pcont.data)
+            imgres  = None
+
+            for key, value in pcont.resources:
+                if key == "Font":
+                    for i in value:
+                        assert fonts[i] == pagepdf.follow(pfont[i])
+
+                elif key == "XObject":
+                    assert len(value) == 1
+                    for i in value:
+                        imgres  = str(i)
+
+                else:
+                    assert False
+
+            assert imgres is not None
+
+            cont    = PrePdfStream()
+            cont.add_zip = True
+            cont.set_stream_to_bytes(fake_obj.content_stream(pcont))
+            cont    = pdf.insert(cont)
+
+            pimg    = pagepdf.follow(pimg[imgres])
+
+            img     = PrePdfStream({
+                "Type":         PrePdfName("XObject"),
+                "Subtype":      PrePdfName("Image"),
+                "Width":        pagepdf.follow(pimg["Width"]),
+                "Height":       pagepdf.follow(pimg["Height"])})
+
+            if str(pagepdf.follow(pimg["Filter"])) == "CCITTFaxDecode":
+                img["Decode"]           = [0, 1]
+                img["BitsPerComponent"] = 1
+                img["ColorSpace"]       = PrePdfName("DeviceGray")
+
+                tiff_offsets    = pageimg[0][IFDTag.StripOffsets]
+                tiff_bytecounts = pageimg[0][IFDTag.StripByteCounts]
+
+                assert len(tiff_offsets) == 1
+                assert len(tiff_bytecounts) == 1
+
+                img.set_stream_to_file(imgfile,
+                                       tiff_offsets[0],
+                                       tiff_bytecounts[0],
+                                       [PrePdfName("CCITTFaxDecode")],
+                                       [{"K": -1,
+                                         "Columns": img["Width"]}])
+
+            else:
+                img.set_stream_to_file(imgfile,
+                                       0,
+                                       getsize(imgfile),
+                                       [PrePdfName("JPXDecode")],
+                                       [{ }])
+
+            img     = pdf.insert(img)
+            pages.append(PrePdfReference(pdf.insert({
+                "Type":         PrePdfName("Page"),
+                "Parent":       PrePdfReference(page_root),
+                "MediaBox":     pagepdf.follow(ppage["MediaBox"]),
+                "Contents":     [PrePdfReference(cont)],
+                "Resources":    {
+                    "ProcSet":      PrePdfReference(procset),
+                    "XObject":      {
+                        PrePdfName(imgres): PrePdfReference(img)},
+                    "Font":         PrePdfReference(fontref)}})))
 
         pdf[page_root]["Kids"]  = pages
         pdf[pdf.root]["Pages"]  = PrePdfReference(page_root)
 
+        return pdf
+
     def write (self):
-        print(len(self.pages))
+        pdf = self.build_pdf()
+        pdf.write(os_path_join("/ram/blister-fG5GEdl6",
+                               self.volume + ".pdf"))
 
 for arg in argv[1:]:
     pdf = DeepBluePdf(arg)

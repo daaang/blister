@@ -427,7 +427,7 @@ class PrePdfObject (MutableMapping):
                                  object_numbers,
                                  already_has_space)[0]
 
-    def content_stream (self, content, resources):
+    def content_stream (self, content, resources = { }):
         # Start with an empty string.
         result = b""
 
