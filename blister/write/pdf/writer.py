@@ -17,7 +17,7 @@ class PrePdfName:
 
     def __init__ (self, namestr):
         # Set the unicode name.
-        self.name   = namestr
+        self.name   = str(namestr)
 
         # Generate the coded name that goes in the PDF.
         self.gen_code()
@@ -35,7 +35,7 @@ class PrePdfName:
         coded       = self.name.encode("utf_8")
 
         # Escape any characters that could be problematic for a name.
-        escaped     = re_escape(self.escape_repl, coded)
+        escaped     = self.re_escape.sub(self.escape_repl, coded)
 
         # Prepend a slash.
         self.code   = b"/" + escaped
@@ -43,6 +43,9 @@ class PrePdfName:
     def escape_repl (self, match):
         # Bytes are escaped with a `#` and two hexadecimal bytes.
         return "#{:02x}".format(match.group(0)[0]).encode("ascii")
+
+    def __repr__ (self):
+        return "<{} {}>".format(self.__class__.__name__, str(self))
 
 class PrePdfReference:
     def __init__ (self, uuid):
@@ -119,7 +122,7 @@ class PrePdfStream (MutableMapping):
 
         return result
 
-    def __contains__ (self):
+    def __contains__ (self, key):
         if key in self.autovalues:
             try:
                 value = self.autovalues[key]()
@@ -190,16 +193,16 @@ class PrePdfStream (MutableMapping):
                             decode_parms    = [ ]):
         self.stream         = self.FileTuple(filename, offset, length)
 
-        self.source_filters = filters
-        self.source_decodes = decode_parms
+        self.source_filters = list(filters)
+        self.source_decodes = list(decode_parms)
 
     def set_stream_to_bytes (self,
                              stream,
                              filters        = [ ],
                              decode_parms   = [ ]):
         self.stream         = stream
-        self.source_filters = filters
-        self.source_decodes = decode_parms
+        self.source_filters = list(filters)
+        self.source_decodes = list(decode_parms)
 
         if self.add_zip:
             self.add_zip    = False
@@ -226,7 +229,7 @@ class PrePdfStream (MutableMapping):
         else:
             outfile.write(self.stream)
 
-class PrePdfObject (MutableMapping):
+class PrePdfObject:
     # These are static values. Each just has its own name.
     static_tokens   = {
         None:   b"null",
@@ -290,7 +293,7 @@ class PrePdfObject (MutableMapping):
 
         if isinstance(self.value, PrePdfStream):
             outfile.write(self.stream_separate[0])
-            self.value.write_stream(outfile)
+            self.value.write(outfile)
             outfile.write(self.stream_separate[1])
 
     def to_bytes (self, object_numbers):
@@ -300,7 +303,7 @@ class PrePdfObject (MutableMapping):
             value       = self.value
 
         old_len         = len(self.recent)
-        self.recent     = self.bytes_helper(value, object_numbers)
+        self.recent     = self.bytes_helper(value, object_numbers)[0]
         new_len         = len(self.recent)
         self.modified   = False
 
@@ -312,34 +315,7 @@ class PrePdfObject (MutableMapping):
                       value,
                       object_numbers,
                       already_has_space = True):
-        if value in self.static_tokens:
-            # Static tokens are made of regular characters, so they need
-            # to be separated by whitespace or delimiters.
-            if already_has_space:
-                # There's already a delimiter or some space, so we're
-                # fine.
-                return (self.static_tokens[value], False)
-
-            else:
-                # Uh oh! No delimiter, so we need to add our own space.
-                return (b" " + self.static_tokens[value], False)
-
-        elif isinstance(value, int):
-            # Integers are also tokens, so we need to go through the
-            # same as the above routine about whether we have space.
-            if already_has_space:
-                return ("{:d}".format(value).encode("ascii"), False)
-            else:
-                return (" {:d}".format(value).encode("ascii"), False)
-
-        elif isinstance(value, Fraction):
-            # Again, fractions are tokens. Etc etc etc.
-            if already_has_space:
-                return ("{:f}".format(value).encode("ascii"), False)
-            else:
-                return (" {:f}".format(value).encode("ascii"), False)
-
-        elif isinstance(value, list):
+        if isinstance(value, list):
             # But lists aren't tokens! They begin with delimiters, so
             # who cares what the previous byte was. Since I'm opening
             # with this delimiter, I can set our space tracker to true
@@ -374,7 +350,7 @@ class PrePdfObject (MutableMapping):
                 # The first item in each pair is a name. It begins with
                 # a delimiter, so I'm not even tracking space between
                 # loops.
-                result     += bytes(PrePdfName(key))
+                result     += PrePdfName(key).__bytes__()
 
                 # However, the first character is the only delimiter in
                 # a name, so the next item might need to add some
@@ -386,6 +362,29 @@ class PrePdfObject (MutableMapping):
 
             # Whatever happens, close the dictionary.
             return (result + b">>", True)
+
+        elif isinstance(value, PrePdfReference):
+            if already_has_space:
+                return (value.to_bytes(object_numbers), False)
+            else:
+                return (b" " + value.to_bytes(object_numbers), False)
+
+        elif isinstance(value, int):
+            # Integers are also tokens, so we need to go through the
+            # same as the above routine about whether we have space.
+            if already_has_space:
+                return ("{:d}".format(value).encode("ascii"), False)
+            else:
+                return (" {:d}".format(value).encode("ascii"), False)
+
+        elif isinstance(value, Fraction):
+            # Again, fractions are tokens. Etc etc etc.
+            if already_has_space:
+                return ("{:f}".format(float(value)).encode("ascii"),
+                        False)
+            else:
+                return (" {:f}".format(float(value)).encode("ascii"),
+                        False)
 
         elif isinstance(value, bytes):
             # If we made a hex string, it'd be twice as long.
@@ -408,16 +407,34 @@ class PrePdfObject (MutableMapping):
         elif isinstance(value, PdfHex):
             # Same as bytes, except that I already know I want to return
             # a hex string.
-            return (b"<" + self.build_hexstr(bytes(value)) + b">", True)
+            return (b"<" + self.build_hexstr(value.__bytes__()) + b">", True)
 
-        elif isinstance(value, (PrePdfName, PdfName)):
+        elif isinstance(value, PrePdfName):
             # If it's a name, we start with a delimiter, so we don't
             # need to worry about space. However, we also end with a
             # regular character, so we might need space later.
-            return (bytes(value), False)
+            return (value.__bytes__(), False)
+
+        elif isinstance(value, PdfName):
+            # If it's a name, we start with a delimiter, so we don't
+            # need to worry about space. However, we also end with a
+            # regular character, so we might need space later.
+            return (PrePdfName(str(value)).__bytes__(), False)
+
+        elif value in self.static_tokens:
+            # Static tokens are made of regular characters, so they need
+            # to be separated by whitespace or delimiters.
+            if already_has_space:
+                # There's already a delimiter or some space, so we're
+                # fine.
+                return (self.static_tokens[value], False)
+
+            else:
+                # Uh oh! No delimiter, so we need to add our own space.
+                return (b" " + self.static_tokens[value], False)
 
         else:
-            raise Exception("??????")
+            raise Exception(repr(value))
 
     def simple_bytes_helper (self,
                              value,
@@ -567,6 +584,7 @@ class PrePdfObject (MutableMapping):
                 # safely batch replace all that are left.
                 string  = string[:pointer] + \
                           string[pointer:].replace(b")", b"\\)")
+                right   = -1
 
         for i in range(len(lefts)):
             # Because I'm popping off contents from right to left, I
@@ -672,7 +690,7 @@ class PrePdf:
 
             self.objects[uuid].write(outfile, numbers)
 
-            oudfile.write(b"\nendobj\n")
+            outfile.write(b"\nendobj\n")
 
         free    = [ ]
         for i in range(size):
@@ -699,12 +717,14 @@ class PrePdf:
             outfile.write("{:010d} {:05} {} \n".format(
                             *line).encode("ascii"))
 
+        iden = gen_uuid().hex.encode("ascii")
+
         outfile.write(b"trailer\n")
         PrePdfObject({
             "Size": size,
             "Root": PrePdfReference(self.root),
             "Info": PrePdfReference(self.info),
-            "ID":   [ "this ain't right yet" ]}).write(outfile, numbers)
+            "ID":   [iden, iden]}).write(outfile, numbers)
 
         outfile.write("\nstartxref\n{:d}\n%%EOF\n".format(
                         startxref).encode("ascii"))
@@ -721,9 +741,9 @@ class PrePdf:
         self.number_key(keys, ordered, self.root)
         self.number_key(keys, ordered, self.info)
 
-        for value in self[self.root].values():
+        #for value in self[self.root].values():
             # For each item linked in our root, check for children.
-            self.object_number_helper(self, keys, ordered, value)
+            #self.object_number_helper(keys, ordered, value)
 
         for key in keys:
             # Last, add any keys we didn't find in the object tree.
@@ -762,6 +782,6 @@ class PrePdf:
 
     def number_key (self, key_set, ordered_list, key):
         # Only number the key if it hasn't yet been numbered.
-        if key in self.key_set:
+        if key in key_set:
             key_set.remove(key)
             ordered_list.append(key)

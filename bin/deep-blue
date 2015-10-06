@@ -3,7 +3,7 @@
 # All Rights Reserved. Licensed according to the terms of the Revised
 # BSD License. See LICENSE.txt for details.
 from os                     import  listdir
-from os.path                import  join    as os_path_join, getsize,
+from os.path                import  join    as os_path_join, getsize, \
                                     split   as os_path_split, abspath
 from re                     import  compile as re_compile
 from sys                    import  argv
@@ -13,7 +13,7 @@ from blister.write.pdf      import  PrePdf, PrePdfReference,    \
                                     PrePdfObject
 from blister.read.tiff      import  Tiff, IFDTag
 from blister.read.jpeg2000  import  Jpeg2000
-from blister.read.pdf       import  Pdf, PdfContentStream
+from blister.read.pdf       import  Pdf, PdfContentStream, PdfStream
 
 class DeepBluePdf:
     re_use_file = re_compile(r"^[0p]([0-9]{7})\.(pdf|tif|jp2)$")
@@ -141,7 +141,7 @@ class DeepBluePdf:
         }
 
         fontref     = { }
-        for name, fdict in fonts:
+        for name, fdict in fonts.items():
             fontref[name] = PrePdfReference(pdf.insert(fdict))
 
         fontref     = pdf.insert(fontref)
@@ -154,40 +154,6 @@ class DeepBluePdf:
 
         pages       = [ ]
         for pagepdf, pageimg, pdffile, imgfile in self.pages:
-            # I've tested this, and I should actually have the correct
-            # objects and everything! AWESOME
-            #
-            # The desired structure is:
-            #
-            # Page:
-            #   Type:       /Page
-            #   Parent:     page_root
-            #   MediaBox:   [0, 0, x, y]
-            #   CropBox:    [0, 0, x, y]
-            #   Contents:   [*1]
-            #   Resources:
-            #     XObject:  {Im0: *2}
-            #     ProcSet:  procset
-            #     Font:     fontref
-            # &1:
-            #   Filter:     /FlateDecode
-            #   Length:     ???
-            # &2:
-            #   Type:       /XObject
-            #   Subtype:    /Image
-            #   Filter:     /CCITTFaxDecode or /JPXDecode
-            #   Length:     ???
-            #   Width:      x
-            #   Height:     y
-            #   BitsPerComponent: 1
-            #   ColorSpace: /DeviceGray or /DeviceRGB
-            #   DecodeParms: {K: -1, Columns: x}
-            #   Decode:     [0, 1]
-            #
-            # The main thing to notice here is that the only real
-            # information I need is image stream info, width, and
-            # height. Beyond that, I suppose I should confirm that my
-            # font and xobject dictionaries match with prime's.
             proot   = pagepdf.follow(pagepdf.trailer.root)
             ppage   = pagepdf.follow(proot["Pages"])
 
@@ -210,14 +176,14 @@ class DeepBluePdf:
             assert isinstance(pcont, PdfStream)
 
             pfile   = open(pdffile, "rb")
-            pcont.decode_stream_data(pagepdf.follow(pcont["Length"]),
-                                     pfile)
+            pcont.decode_stream_data(pagepdf.follow(
+                            pcont.value["Length"]), pfile)
             pfile.close()
 
             pcont   = PdfContentStream(pcont.data)
             imgres  = None
 
-            for key, value in pcont.resources:
+            for key, value in pcont.resources.items():
                 if key == "Font":
                     for i in value:
                         assert fonts[i] == pagepdf.follow(pfont[i])
@@ -242,23 +208,26 @@ class DeepBluePdf:
             img     = PrePdfStream({
                 "Type":         PrePdfName("XObject"),
                 "Subtype":      PrePdfName("Image"),
-                "Width":        pagepdf.follow(pimg["Width"]),
-                "Height":       pagepdf.follow(pimg["Height"])})
+                "Width":        pagepdf.follow(pimg.value["Width"]),
+                "Height":       pagepdf.follow(pimg.value["Height"])})
 
-            if str(pagepdf.follow(pimg["Filter"])) == "CCITTFaxDecode":
+            if str(pagepdf.follow(pimg.value["Filter"])) \
+                    == "CCITTFaxDecode":
                 img["Decode"]           = [0, 1]
                 img["BitsPerComponent"] = 1
                 img["ColorSpace"]       = PrePdfName("DeviceGray")
 
-                tiff_offsets    = pageimg[0][IFDTag.StripOffsets]
-                tiff_bytecounts = pageimg[0][IFDTag.StripByteCounts]
+                #tiff_offsets    = pageimg[0][IFDTag.StripOffsets]
+                #tiff_bytecounts = pageimg[0][IFDTag.StripByteCounts]
 
-                assert len(tiff_offsets) == 1
-                assert len(tiff_bytecounts) == 1
+                #assert len(tiff_offsets) == 1
+                #assert len(tiff_bytecounts) == 1
 
-                img.set_stream_to_file(imgfile,
-                                       tiff_offsets[0],
-                                       tiff_bytecounts[0],
+                length  = pagepdf.follow(pimg.value["Length"])
+
+                img.set_stream_to_file(pdffile,
+                                       pimg.stream_offset,
+                                       length,
                                        [PrePdfName("CCITTFaxDecode")],
                                        [{"K": -1,
                                          "Columns": img["Width"]}])
@@ -289,7 +258,7 @@ class DeepBluePdf:
 
     def write (self):
         pdf = self.build_pdf()
-        pdf.write(os_path_join("/ram/blister-fG5GEdl6",
+        pdf.write(os_path_join("/quod-prep/prep/d/dcu/DCU_Image_Processing/3_In_Process/deep-blue/maybe",
                                self.volume + ".pdf"))
 
 for arg in argv[1:]:
