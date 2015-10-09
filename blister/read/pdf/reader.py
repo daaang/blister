@@ -298,11 +298,19 @@ class PdfStream (PdfIndirectObject):
             # If we haven't yet tried decoding anything, we start by
             # looking at filters.
             filters = self.value.get("Filter", [ ])
+            parms   = self.value.get("DecodeParms", None)
 
             if not isinstance(filters, list):
                 # Be sure we have a list of filters, even if there's
                 # just one (just to make for consistent code).
                 filters = [filters]
+
+            if parms is None:
+                parms   = [{}] * len(filters)
+
+            if not isinstance(parms, list):
+                assert len(filters) == 1
+                parms   = [parms]
 
             for fname in filters:
                 # Check each filter in the list.
@@ -310,6 +318,7 @@ class PdfStream (PdfIndirectObject):
                     # If it's not a filter we're equipped to handle,
                     # store the list.
                     self.filters = filters
+                    self.parms   = parms
 
                     # We're done. No need to even look at the file.
                     return
@@ -319,9 +328,11 @@ class PdfStream (PdfIndirectObject):
             file_object.seek(self.stream_offset)
             data = file_object.read(length)
 
+            i = 0
             for fname in filters:
                 # Decode the data according to each filter.
-                data = self.decodable_filters[fname](data)
+                data = self.decodable_filters[fname](data, parms[i])
+                i += 1
 
             # Set the data and leave the filter list null.
             self.data       = data
@@ -1051,6 +1062,9 @@ class PdfXrefHistory:
                                                      "generation"))
     CompressedTuple = namedtuple("CompressedTuple", ("parent_stream",
                                                      "index"))
+    UnknownTuple    = namedtuple("UnknownTuple",    ("field_1",
+                                                     "field_2",
+                                                     "field_3"))
 
     default_type    = PdfObjEntry.InUseEntry
 
@@ -1175,7 +1189,7 @@ class PdfXrefHistory:
             # If this were a hybrid file, we'd already have a trailer.
             # But it's not, so we need to treat the stream dictionary as
             # if it were a trailer.
-            return read_trailer(factory, stream_dict)
+            return self.read_trailer(factory, stream_dict)
 
     def read_table (self, factory):
 
@@ -1275,6 +1289,9 @@ class PdfXrefHistory:
 
         if field_3 is None:
             field_3 = self.default_field_3[entry_type]
+
+        if entry_type not in self.tuples_by_type:
+            return self.UnknownTuple(entry_type, field_2, field_3)
 
         # Now that everything's guaranteed to have a value, return the
         # named tuple.
@@ -1392,7 +1409,8 @@ class PdfCrossReference (Mapping):
                     # should make a note of it.
                     self.max_object_num = obj_num
 
-                if isinstance(value, PdfXrefHistory.FreeEntryTuple):
+                if isinstance(value, (PdfXrefHistory.FreeEntryTuple,
+                                      PdfXrefHistory.UnknownTuple)):
                     # We don't track free objects.
                     if obj_num in self.internal_dict:
                         # If this object ever was in the dictionary, get
@@ -1533,7 +1551,7 @@ class PdfCrossReference (Mapping):
                     # Be sure it's the right kind of placeholder and
                     # that its recorded parent and index match those of
                     # the stream we're looking at.
-                    assert isinstance(subobj, SubObj)                 \
+                    assert isinstance(subobj, self.SubObj)            \
                             and subobj.parent    == stream_key.number \
                             and subobj.index     == i
 

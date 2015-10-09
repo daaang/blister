@@ -125,6 +125,135 @@ def decode_ASCII85 (encoded_bytes, parms = { }):
     # If we made it to here, we have a decoded string. Awesome!
     return result
 
+def png_decode_row (row, filter_id, previous_row, bpc):
+    if filter_id == 0:
+        # Before we do anything else, just check what's up with the
+        # filter id. If it's zero, we don't have to even do a thing.
+        return row
+
+    # Otherwise, we need to prepare for a result row that looks
+    # different from the one we've been given. We'll start with some
+    # zero bytes that will be removed.
+    result = [0] * bpc
+
+    if filter_id == 1:
+        for sub in row:
+            # It's a Sub filter, which means I should add the value of
+            # the corresponding byte of the previous component. If we're
+            # not yet far enough in the row for there to have been a
+            # previous component, then that's what those zero bytes were
+            # for.
+            result.append((sub + result[-bpc]) % 0x100)
+
+    elif filter_id == 2:
+        i = 0
+        for sub in row:
+            # It's an Up filter, which means we add the value of the
+            # byte directly above this one, in the previous row.
+            result.append((sub + previous_row[i]) % 0x100)
+            i += 1
+
+    elif filter_id == 3:
+        i = 0
+        for sub in row:
+            # It's an Average filter, which means we add the floored
+            # mean of the left and upper bytes.
+            result.append((sub + ((result[-bpc] + previous_row[i])
+                                  // 2)) % 0x100)
+            i += 1
+
+    elif filter_id == 4:
+        # The Paeth filter is the most complicated. I actually split it
+        # into two loops in order to simplify the process.
+        i = 0
+        for sub in row[:bpc]:
+            # The first loop is through the bytes in the first
+            # component. For these, the values of the "left" and "upper
+            # left" bytes will default to zero, so the Paeth predictor
+            # will equal the "above" byte. Therefore, the Paeth value
+            # will also equal the "above" byte. So, for the bytes in
+            # this component, this is the same as the Up filter.
+            result.append((sub + previous_row[i]) % 0x100)
+            i += 1
+
+        for sub in row[bpc:]:
+            # We want three bytes near this one.
+            left        = result[-bpc]
+            above       = previous_row[i]
+            upper_left  = previous_row[i - bpc]
+
+            # Calculate our predictor value and figure out how close it
+            # is to each of those bytes.
+            predictor   = left + above - upper_left
+            dleft       = abs(predictor - left)
+            dabove      = abs(predictor - above)
+            dupper_left = abs(predictor - upper_left)
+
+            if dleft <= dabove and dleft <= dupper_left:
+                # The left value is closest.
+                paeth   = left
+
+            elif dabove <= dupper_left:
+                # The above value is closest.
+                paeth   = above
+
+            else:
+                # The upper-left value is closest.
+                paeth   = upper_left
+
+            # We add the paeth value.
+            result.append((sub + paeth) % 0x100)
+
+            i += 1
+
+    else:
+        raise Exception("There is no PNG type-{:d} filter".format(
+                        filter_id))
+
+    # Be sure to remove the zero-component we started with.
+    return bytes(result[bpc:])
+
 def decode_Flate (encoded_bytes, parms = { }):
-    # I get to just use the library for this one! Easy.
-    return zlib_decompress(encoded_bytes)
+    # First we decompress the string. That's probably all we'll need to
+    # do.
+    result  = zlib_decompress(encoded_bytes)
+
+    # Get decode parameters.
+    predictor   = parms.get("Predictor",        1)
+    bpc         = parms.get("BitsPerComponent", 8)
+    columns     = parms.get("Columns",          1)
+
+    if predictor < 10:
+        # We only care whether the predictor is under 10 or not. If it
+        # is, we can return the data as-is.
+        return result
+
+    # Ok! Looks like our message was also filtered before its
+    # compression. So our result is still encoded.
+    png_encoded = result
+
+    result      = b""
+
+    # Our filtered data has a total length and its own row length one
+    # greater than that of our resulting data.
+    png_all_len = len(png_encoded)
+    png_row_len = columns + 1
+
+    # We need at least one column. We also need the result to be a
+    # length that can divide evenly into rows.
+    assert columns > 0
+    assert png_all_len % png_row_len == 0
+
+    # We'll start with a row of zeroes that we won't actually add to our
+    # result. You know, just in case.
+    row         = bytes(png_row_len)
+
+    for i in range(0, png_all_len, png_row_len):
+        # Decode the thing row-by-row.
+        row     = png_decode_row(png_encoded[i+1:i+png_row_len],
+                                 png_encoded[i],
+                                 row,
+                                 bpc)
+        result += row
+
+    return result
