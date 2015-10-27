@@ -2,11 +2,12 @@
 # Copyright (c) 2015 The Regents of the University of Michigan.
 # All Rights Reserved. Licensed according to the terms of the Revised
 # BSD License. See LICENSE.txt for details.
+from argparse               import  ArgumentParser
 from os                     import  listdir
-from os.path                import  join    as os_path_join, getsize, \
-                                    split   as os_path_split, abspath
+from os.path                import  join    as os_path_join, getsize,  \
+                                    split   as os_path_split, abspath, \
+                                    isfile, isdir
 from re                     import  compile as re_compile
-from sys                    import  argv
 
 from blister.write.pdf      import  PrePdf, PrePdfReference,    \
                                     PrePdfStream, PrePdfName,   \
@@ -19,6 +20,8 @@ class DeepBluePdf:
     re_use_file = re_compile(r"^[0p]([0-9]{7})\.(pdf|tif|jp2)$")
 
     def __init__ (self, path_to_dir):
+        assert isdir(path_to_dir)
+
         path_to_dir     = abspath(path_to_dir)
         useful_files    = { }
         ignore_files    = set()
@@ -256,11 +259,40 @@ class DeepBluePdf:
 
         return pdf
 
-    def write (self):
-        pdf = self.build_pdf()
-        pdf.write(os_path_join("/quod-prep/prep/d/dcu/DCU_Image_Processing/3_In_Process/deep-blue/third-batch/combined/results",
-                               self.volume + ".pdf"))
+    def write (self, dest, overwrite = False):
+        assert isdir(dest)
 
-for arg in argv[1:]:
-    pdf = DeepBluePdf(arg)
-    pdf.write()
+        path    = os_path_join(dest, self.volume + ".pdf")
+
+        if overwrite or not isfile(path):
+            pdf = self.build_pdf()
+            pdf.write(path)
+
+parser = ArgumentParser(
+            description = "Generate single-page PDFs from images.")
+
+parser.add_argument("-o", "--output-dir",
+        required    = True,
+        help        = "Destination directory path for resulting PDFs.")
+
+parser.add_argument("-f", "--force",
+        action      = "store_true",
+        default     = False,
+        help        = "Overwrite existing PDFs if present.")
+
+parser.add_argument("volume_dirs",
+        nargs       = "+",
+        help        = "Path(s) to volume(s) ready for packaging.")
+
+args = parser.parse_args()
+
+if not isdir(args.output_dir):
+    raise RuntimeError("Not a directory: {}".format(args.output_dir))
+
+for volume in args.volume_dirs:
+    if not isdir(volume):
+        raise RuntimeError("Not a directory: {}".format(volume))
+
+for volume in args.volume_dirs:
+    pdf = DeepBluePdf(volume)
+    pdf.write(args.output_dir, args.force)
