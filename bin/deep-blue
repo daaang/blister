@@ -258,7 +258,7 @@ class DeepBluePdf:
 
     def write (self):
         pdf = self.build_pdf()
-        pdf.write(os_path_join("/quod-prep/prep/d/dcu/DCU_Image_Processing/3_In_Process/deep-blue/maybe",
+        pdf.write(os_path_join("/quod-prep/prep/d/dcu/DCU_Image_Processing/3_In_Process/deep-blue/third-batch/combined/results",
                                self.volume + ".pdf"))
 
 for arg in argv[1:]:
