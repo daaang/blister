@@ -280,6 +280,11 @@ parser.add_argument("-f", "--force",
         default     = False,
         help        = "Overwrite existing PDFs if present.")
 
+parser.add_argument("-s", "--safe",
+        action      = "store_false",
+        dest        = "force",
+        help        = "Skip existing PDFs (default).")
+
 parser.add_argument("volume_dirs",
         nargs       = "+",
         help        = "Path(s) to volume(s) ready for packaging.")
