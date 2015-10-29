@@ -211,8 +211,8 @@ class DeepBluePdf:
                 elif isinstance(pageimg, Jpeg2000):
                     # The width and height are in the image header.
                     jp2h    = pageimg[b"jp2h"]
-                    width   = jp2h[b"ihdr"][b"W"]
-                    height  = jp2h[b"ihdr"][b"H"]
+                    width   = jp2h[b"ihdr"]["W"]
+                    height  = jp2h[b"ihdr"]["H"]
 
                     res     = jp2h[b"res "]
 
@@ -221,17 +221,17 @@ class DeepBluePdf:
                     else:
                         res = res[b"resd"]
 
-                    xres    = self.get_jp2_ppi(res[b"RN1"],
-                                               res[b"RD1"],
-                                               res[b"RE1"])
-                    yres    = self.get_jp2_ppi(res[b"RN2"],
-                                               res[b"RD2"],
-                                               res[b"RE2"])
+                    xres    = self.get_jp2_ppi(res["RN1"],
+                                               res["RD1"],
+                                               res["RE1"])
+                    yres    = self.get_jp2_ppi(res["RN2"],
+                                               res["RD2"],
+                                               res["RE2"])
 
                     xpoints = (width    * 72) / xres
                     ypoints = (height   * 72) / yres
 
-                    colr    = jp2h[b"colr"][0][b"ECS"]
+                    colr    = jp2h[b"colr"][0]["ECS"]
 
                     if colr == 17:
                         samples = (1, 8)
@@ -240,7 +240,7 @@ class DeepBluePdf:
                         assert colr == 16
                         samples = (3, 8)
 
-                    img == { }
+                    img = { }
 
                     xobj_args   = (imgfile,
                                    0,
@@ -263,9 +263,10 @@ class DeepBluePdf:
                 cont            = PrePdfStream()
                 cont.add_zip    = True
                 cont.set_stream_to_bytes(fake_obj.content_stream(
-                                PdfContentStream(self.img_only(xpoints,
-                                                               ypoints,
-                                                               "Im0"))))
+                                PdfContentStream(self.img_only(
+                                        width   = float(xpoints),
+                                        height  = float(ypoints),
+                                        name    = "Im0").encode("ascii"))))
                 cont            = pdf.insert(cont)
 
                 pages.append(PrePdfReference(pdf.insert({
