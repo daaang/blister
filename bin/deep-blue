@@ -3,6 +3,7 @@
 # All Rights Reserved. Licensed according to the terms of the Revised
 # BSD License. See LICENSE.txt for details.
 from argparse               import  ArgumentParser
+from fractions              import  Fraction
 from os                     import  listdir
 from os.path                import  join    as os_path_join, getsize,  \
                                     split   as os_path_split, abspath, \
@@ -18,6 +19,10 @@ from blister.read.pdf       import  Pdf, PdfContentStream, PdfStream
 
 class DeepBluePdf:
     re_use_file = re_compile(r"^[0p]([0-9]{7})\.(pdf|tif|jp2)$")
+
+    # This is for pages without OCR.
+    img_only    = "q {width:.2f} 0 0 {height:.2f} 0 0 cm " \
+                  "/{name} Do Q".format
 
     def __init__ (self, path_to_dir):
         assert isdir(path_to_dir)
@@ -47,10 +52,15 @@ class DeepBluePdf:
         for i in range(1, len(useful_files) + 1):
             files   = useful_files.pop(i)
 
-            pdffile = files["pdf"]
-            thefile = open(pdffile, "rb")
-            pdf     = Pdf(thefile)
-            thefile.close()
+            if "pdf" in files:
+                pdffile = files["pdf"]
+                thefile = open(pdffile, "rb")
+                pdf     = Pdf(thefile)
+                thefile.close()
+
+            else:
+                pdffile = None
+                pdf     = None
 
             if "jp2" in files:
                 imgfile = files["jp2"]
@@ -69,6 +79,14 @@ class DeepBluePdf:
         assert len(useful_files) == 0
 
         root, self.volume   = os_path_split(path_to_dir)
+
+    def get_jp2_ppi (self, numerator, denominator, exponent):
+        if exponent > 0:
+            numerator   *= 10 ** exponent
+        elif exponent < 0:
+            denominator *= 10 ** (-exponent)
+
+        return Fraction(254 * numerator, 10000 * denominator)
 
     def build_pdf (self):
         pdf         = PrePdf()
@@ -157,53 +175,212 @@ class DeepBluePdf:
 
         pages       = [ ]
         for pagepdf, pageimg, pdffile, imgfile in self.pages:
+            if pagepdf is None:
+                if isinstance(pageimg, Tiff):
+                    width   = pageimg[0][IFDTag.ImageWidth][0]
+                    height  = pageimg[0][IFDTag.ImageLength][0]
+                    xres    = pageimg[0][IFDTag.XResolution][0]
+                    yres    = pageimg[0][IFDTag.YResolution][0]
+
+                    xpoints = (width    * 72) / xres
+                    ypoints = (height   * 72) / yres
+
+                    assert pageimg[0][IFDTag.SamplesPerPixel]   == [1]
+                    assert pageimg[0][IFDTag.BitsPerSample]     == [1]
+
+                    samples = (1, 1)
+
+                    img     = {
+                        "Decode":           [0, 1],
+                        "BitsPerComponent": 1,
+                        "ColorSpace":       PrePdfName("DeviceGray"),
+                    }
+
+                    tiff_offsets    = pageimg[0][IFDTag.StripOffsets]
+                    tiff_bytecounts = pageimg[0][IFDTag.StripByteCounts]
+
+                    assert len(tiff_offsets)    == 1
+                    assert len(tiff_bytecounts) == 1
+
+                    xobj_args   = (imgfile,
+                                   tiff_offsets[0],
+                                   tiff_bytecounts[0],
+                                   [PrePdfName("CCITTFaxDecode")],
+                                   [{"K": -1, "Columns": width}])
+
+                elif isinstance(pageimg, Jpeg2000):
+                    # The width and height are in the image header.
+                    jp2h    = pageimg[b"jp2h"]
+                    width   = jp2h[b"ihdr"]["W"]
+                    height  = jp2h[b"ihdr"]["H"]
+
+                    res     = jp2h[b"res "]
+
+                    if b"resc" in res:
+                        res = res[b"resc"]
+                    else:
+                        res = res[b"resd"]
+
+                    xres    = self.get_jp2_ppi(res["RN1"],
+                                               res["RD1"],
+                                               res["RE1"])
+                    yres    = self.get_jp2_ppi(res["RN2"],
+                                               res["RD2"],
+                                               res["RE2"])
+
+                    xpoints = (width    * 72) / xres
+                    ypoints = (height   * 72) / yres
+
+                    colr    = jp2h[b"colr"][0]["ECS"]
+
+                    if colr == 17:
+                        samples = (1, 8)
+
+                    else:
+                        assert colr == 16
+                        samples = (3, 8)
+
+                    img = { }
+
+                    xobj_args   = (imgfile,
+                                   0,
+                                   getsize(imgfile),
+                                   [PrePdfName("JPXDecode")],
+                                   [{ }])
+
+                # All images will have these attributes.
+                img["Type"]     = PrePdfName("XObject")
+                img["Subtype"]  = PrePdfName("Image")
+                img["Width"]    = width
+                img["Height"]   = height
+
+                # Insert the stream.
+                img             = PrePdfStream(img)
+                img.set_stream_to_file(*xobj_args)
+                img             = pdf.insert(img)
+
+                # Construct a bare minimum content stream.
+                cont            = PrePdfStream()
+                cont.add_zip    = True
+                cont.set_stream_to_bytes(fake_obj.content_stream(
+                                PdfContentStream(self.img_only(
+                                        width   = float(xpoints),
+                                        height  = float(ypoints),
+                                        name    = "Im0").encode("ascii"))))
+                cont            = pdf.insert(cont)
+
+                pages.append(PrePdfReference(pdf.insert({
+                    "Type":         PrePdfName("Page"),
+                    "Parent":       PrePdfReference(page_root),
+                    "MediaBox":     [0, 0, xpoints, ypoints],
+                    "Contents":     [PrePdfReference(cont)],
+                    "Resources":    {
+                        "ProcSet":      PrePdfReference(procset),
+                        "XObject":      {
+                            PrePdfName(imgres): PrePdfReference(img)},
+                        "Font":         PrePdfReference(fontref)}})))
+
+                continue
+
+            # Get the PDF catalog and page tree.
             proot   = pagepdf.follow(pagepdf.trailer.root)
             ppage   = pagepdf.follow(proot["Pages"])
 
+            # Follow however many page nodes it takes to get to the
+            # first page.
             while "Kids" in ppage:
+                # Get the list of child nodes; assert that there's no
+                # more than one child.
                 kids    = pagepdf.follow(ppage["Kids"])
                 assert len(kids) == 1
 
+                # Point at that child.
                 ppage   = pagepdf.follow(kids[0])
 
+            # I don't want to deal with any funny business regarding
+            # page size.
             assert ppage["MediaBox"] == ppage["CropBox"]
+
+            # I'll need the contents and resources.
             pcont   = pagepdf.follow(ppage["Contents"])
             pres    = pagepdf.follow(ppage["Resources"])
+
+            # From the resources, I'll need the fonts and xobjects.
             pfont   = pagepdf.follow(pres["Font"])
             pimg    = pagepdf.follow(pres["XObject"])
 
             while isinstance(pcont, list):
+                # It's possible that we have a list of content streams.
+                # In this use-case, I'm not tolerating more than one
+                # stream per page, so let's assert that there's only the
+                # one.
                 assert len(pcont) == 1
+
+                # Keep going until we have the actual stream.
                 pcont   = pagepdf.follow(pcont[0])
 
+            # Let's be sure it's a stream too.
             assert isinstance(pcont, PdfStream)
 
+            # Open the actual PDF. We'll use it to actually decode the
+            # stream data.
             pfile   = open(pdffile, "rb")
             pcont.decode_stream_data(pagepdf.follow(
                             pcont.value["Length"]), pfile)
+
+            # Once done, we no longer need the file itself.
             pfile.close()
 
+            # Generate a content stream object. Get ready to pull an
+            # image resource.
             pcont   = PdfContentStream(pcont.data)
             imgres  = None
 
-            for key, value in pcont.resources.items():
+            for key, name_set in pcont.resources.items():
+                # Examine each set of resource names in the content
+                # stream.
                 if key == "Font":
-                    for i in value:
+                    # Look at each font mentioned here.
+                    for i in name_set:
+                        # I'm being crude here and just asserting that
+                        # the font object be exactly the same as what I
+                        # have in my font dictionary.
+                        #
+                        # If I wanted to be more prepared, I could
+                        # actually search for a corresponding font or
+                        # copy this object into the new PDF, but this
+                        # crude approach gets the job done for now.
                         assert fonts[i] == pagepdf.follow(pfont[i])
 
                 elif key == "XObject":
-                    assert len(value) == 1
-                    for i in value:
+                    # I'm only allowing a single image to appear in each
+                    # content stream. I'm not trying to do anything
+                    # crazy here.
+                    assert len(name_set) == 1
+
+                    for i in name_set:
+                        # Get the name assigned to the image.
                         imgres  = str(i)
 
                 else:
+                    # I'm only prepared for fonts and an image. I'm not
+                    # ready for any additional resources for this
+                    # application.
                     assert False
 
+            # Be sure that we successfully collected an image name.
             assert imgres is not None
 
+            # Prepare to build a new PDF stream.
             cont    = PrePdfStream()
+
+            # We want this to be zipped. Set the stream to a
+            # stringification of our content stream.
             cont.add_zip = True
             cont.set_stream_to_bytes(fake_obj.content_stream(pcont))
+
+            # Insert this new content stream object into our pdf, and
+            # track its key.
             cont    = pdf.insert(cont)
 
             pimg    = pagepdf.follow(pimg[imgres])
