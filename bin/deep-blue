@@ -20,6 +20,9 @@ from blister.read.pdf       import  Pdf, PdfContentStream, PdfStream
 class DeepBluePdf:
     re_use_file = re_compile(r"^[0p]([0-9]{7})\.(pdf|tif|jp2)$")
 
+    re_xres     = re_compile(rb"<tiff:XResolution>([^<]*)")
+    re_yres     = re_compile(rb"<tiff:YResolution>([^<]*)")
+
     # This is for pages without OCR.
     img_only    = "q {width:.2f} 0 0 {height:.2f} 0 0 cm " \
                   "/{name} Do Q".format
@@ -214,19 +217,25 @@ class DeepBluePdf:
                     width   = jp2h[b"ihdr"]["W"]
                     height  = jp2h[b"ihdr"]["H"]
 
-                    res     = jp2h[b"res "]
+                    if b"res " in jp2h:
+                        res     = jp2h[b"res "]
 
-                    if b"resc" in res:
-                        res = res[b"resc"]
+                        if b"resc" in res:
+                            res = res[b"resc"]
+                        else:
+                            res = res[b"resd"]
+
+                        xres    = self.get_jp2_ppi(res["RN1"],
+                                                   res["RD1"],
+                                                   res["RE1"])
+                        yres    = self.get_jp2_ppi(res["RN2"],
+                                                   res["RD2"],
+                                                   res["RE2"])
+
                     else:
-                        res = res[b"resd"]
-
-                    xres    = self.get_jp2_ppi(res["RN1"],
-                                               res["RD1"],
-                                               res["RE1"])
-                    yres    = self.get_jp2_ppi(res["RN2"],
-                                               res["RD2"],
-                                               res["RE2"])
+                        uuid    = pageimg[b"uuid"][0][b"DATA"]
+                        xres    = Fraction(self.re_xres.search(uuid).group(1).decode("ascii"))
+                        yres    = Fraction(self.re_yres.search(uuid).group(1).decode("ascii"))
 
                     xpoints = (width    * 72) / xres
                     ypoints = (height   * 72) / yres
@@ -277,7 +286,7 @@ class DeepBluePdf:
                     "Resources":    {
                         "ProcSet":      PrePdfReference(procset),
                         "XObject":      {
-                            PrePdfName(imgres): PrePdfReference(img)},
+                            PrePdfName("Im0"): PrePdfReference(img)},
                         "Font":         PrePdfReference(fontref)}})))
 
                 continue
