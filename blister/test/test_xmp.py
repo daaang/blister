@@ -4,7 +4,8 @@
 from collections.abc import MutableMapping
 from unittest import TestCase
 
-from blister.xmp import VanillaXMP, URI, XmpBaseValue, XmpURI, XmpText
+from blister.xmp import VanillaXMP, URI, XmpBaseValue, XmpURI, \
+        XmpText, XmpInteger
 
 class TestVanillaXMP (TestCase):
 
@@ -57,6 +58,18 @@ class TestXMPValues (TestCase):
     def test_text_only_accepts_str (self):
         with self.assertRaisesRegex(TypeError, "must be str.*not int"):
             nope = XmpText(44)
+
+    def test_int_value (self):
+        i = XmpInteger(44)
+
+        self.assertTrue(isinstance(i, XmpText))
+        self.assertEqual(i.py_value, 44)
+        self.assertEqual(repr(i), "<XmpInteger 44>")
+        self.assertEqual(str(i), "44")
+
+    def test_integer_only_accepts_int (self):
+        with self.assertRaisesRegex(TypeError, "must be int.*not str"):
+            nope = XmpInteger("oh no oh no")
 
 class TestURI (TestCase):
 

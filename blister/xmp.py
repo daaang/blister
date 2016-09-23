@@ -141,6 +141,14 @@ class XmpText (XmpBaseValue):
         """Return the value we should store."""
         return value
 
+class XmpInteger (XmpText):
+    """XMP Integer"""
+
+    py_type = int
+
+    def __str__ (self):
+        return "{:d}".format(self.value)
+
 
 class VanillaXMP (MutableMapping):
 
