@@ -1,6 +1,7 @@
 # Copyright (c) 2016 The Regents of the University of Michigan.
 # All Rights Reserved. Licensed according to the terms of the Revised
 # BSD License. See LICENSE.txt for details.
+from collections import namedtuple
 from collections.abc import MutableMapping
 
 class URI (str):
@@ -34,6 +35,12 @@ class URI (str):
     def __repr__ (self):
         """Return a str representing a URI (rather than a str)."""
         return "<{} {}>".format(self.__class__.__name__, self)
+
+URI_RDF = URI("http://www.w3.org/1999/02/22-rdf-syntax-ns#")
+URI_X   = URI("adobe:ns:meta/")
+URI_XML = URI("http://www.w3.org/XML/1998/namespace")
+
+UriTag = namedtuple("UriTag", ("uri", "name"))
 
 class XmpBaseValue:
     """Abstract XMP Value"""
@@ -155,12 +162,68 @@ class XmpInteger (XmpText):
     def __str__ (self):
         return "{:d}".format(self.value)
 
-class XmpCollection (XmpBaseValue):
+class XmpBaseCollection (XmpBaseValue):
     """XMP Collection"""
 
     @property
     def py_value (self):
         return self
+
+class XmpBaseArray (XmpBaseCollection):
+    """XMP Array"""
+
+    # This must be a named UriTag duple.
+    xmp_tag = None
+
+    # This must be a subclass of XmpBaseValue.
+    xmp_type = None
+
+    def __init__ (self, iterable = ( )):
+        assert isinstance(self.xmp_tag, UriTag) \
+                and issubclass(self.xmp_type, XmpBaseValue)
+
+        self.value = [ ]
+        self.extend(iterable)
+
+    def __getitem__ (self, index):
+        return self.value[index].py_value
+
+    def __len__ (self):
+        return len(self.value)
+
+    def __contains__ (self, value):
+        for wrapper in self.value:
+            if wrapper.loose_equal(value):
+                return True
+
+        return False
+
+    def __iter__ (self):
+        for wrapper in self.value:
+            yield wrapper.py_value
+
+    def __reversed__ (self):
+        for wrapper in reversed(self.value):
+            yield wrapper.py_value
+
+    def index (self, value, i = 0, j = None):
+        if j is None:
+            j = len(self)
+
+        for pos in range(i, j):
+            if self.value[pos].loose_equal(value):
+                return pos
+
+        raise ValueError("{} is not in array".format(repr(value)))
+
+    def count (self, value):
+        count = 0
+
+        for wrapper in self.value:
+            if wrapper.loose_equal(value):
+                count += 1
+
+        return count
 
 class VanillaXMP (MutableMapping):
 
