@@ -91,7 +91,56 @@ class XmpURI (XmpBaseValue):
 
     def __repr__ (self):
         """Return an unambiguous representation."""
-        return "<{} {}>".format(self.__class__.__name__, self.value)
+        if self.value:
+            return "<{} {}>".format(self.__class__.__name__, self.value)
+
+        else:
+            return "<{}>".format(self.__class__.__name__)
+
+class XmpText (XmpBaseValue):
+    """Simple XMP Value"""
+
+    # This is the basic type I expect for the internal value. Also, the
+    # py_value property should return something of this type.
+    py_type = str
+
+    def __init__ (self, value):
+        """Set the internal value."""
+
+        # Check that the init value is something we can work with.
+        if not self.is_valid_init_value(value):
+            # If it's not valid, raise TypeError.
+            self.raise_invalid_init(self.py_type.__name__,
+                    value.__class__.__name__)
+
+        # Cool! Set our internal value.
+        self.value = self.format_valid_init_value(value)
+
+    @property
+    def py_value (self):
+        """Return a pythonic value."""
+        return self.value
+
+    def __str__ (self):
+        """Return a string representation as would appear in XML."""
+        return str(self.value)
+
+    def __repr__ (self):
+        """Return an unambiguous representation."""
+        if str(self):
+            return "<{} {}>".format(self.__class__.__name__, str(self))
+
+        else:
+            return "<{}>".format(self.__class__.__name__)
+
+    def is_valid_init_value (self, value):
+        """Return true if the value is of a valid init format."""
+        return isinstance(value, self.py_type)
+
+    def format_valid_init_value (self, value):
+        """Return the value we should store."""
+        return value
+
 
 class VanillaXMP (MutableMapping):
 
