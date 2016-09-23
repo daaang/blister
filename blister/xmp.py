@@ -78,11 +78,17 @@ class XmpURI (XmpBaseValue):
     def __init__ (self, uri):
         """Set the internal value."""
 
-        # Be sure the internal value is valid.
-        if not isinstance(uri, URI):
-            self.raise_invalid_init("URI", uri.__class__.__name__)
+        if isinstance(uri, URI):
+            # We expect a URI.
+            self.value = uri
 
-        self.value = uri
+        elif isinstance(uri, str):
+            # We also allow a str object, which we'll convert to URI.
+            self.value = URI(uri)
+
+        else:
+            # But we don't accept anything else.
+            self.raise_invalid_init("URI", uri.__class__.__name__)
 
     @property
     def py_value (self):
@@ -155,7 +161,6 @@ class XmpCollection (XmpBaseValue):
     @property
     def py_value (self):
         return self
-
 
 class VanillaXMP (MutableMapping):
 

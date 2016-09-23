@@ -40,10 +40,11 @@ class TestXMPValues (TestCase):
 
     def test_uri_only_accepts_uri_objects (self):
         with self.assertRaises(TypeError):
-            uri = XmpURI("hello")
-
-        with self.assertRaises(TypeError):
             uri = XmpURI(44)
+
+    def test_uri_does_convert_str_objects (self):
+        uri = XmpURI("hello")
+        self.assertTrue(isinstance(uri.py_value, URI))
 
     def test_text_value (self):
         text = XmpText("hello")
