@@ -35,6 +35,34 @@ class URI (str):
         """Return a str representing a URI (rather than a str)."""
         return "<{} {}>".format(self.__class__.__name__, self)
 
+class XmpBaseValue:
+    """Abstract XMP Value"""
+
+    def __init__ (self):
+        """Raise NotImplementedError.
+
+        I don't want these to ever be created directly.
+        """
+        self.__not_implemented()
+
+    @property
+    def py_value (self):
+        """Raise NotImplementedError.
+
+        This should be overwritten to return a pythonic value that
+        behaves however a user would expect without needing to know
+        about XMP's more advanced features.
+
+        For example, if this is an XmpInteger, this property should
+        return an int object.
+        """
+        self.__not_implemented()
+
+    def __not_implemented (self):
+        """Raise NotImplementedError."""
+        raise NotImplementedError("{} isn't meant to ever be " \
+                "implemented directly".format(self.__class__.__name__))
+
 class VanillaXMP (MutableMapping):
 
     def __delitem__ (self, key):

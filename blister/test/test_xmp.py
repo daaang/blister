@@ -4,13 +4,28 @@
 from collections.abc import MutableMapping
 from unittest import TestCase
 
-from blister.xmp import VanillaXMP, URI
+from blister.xmp import VanillaXMP, URI, XmpBaseValue
 
 class TestVanillaXMP (TestCase):
 
     def test_is_mutable_mapping (self):
         xmp = VanillaXMP()
         self.assertTrue(isinstance(xmp, MutableMapping))
+
+class TestXMPValues (TestCase):
+
+    def test_abstract_value_wont_init (self):
+        with self.assertRaises(NotImplementedError):
+            a = XmpBaseValue()
+
+    def test_abstract_value_has_no_py_value (self):
+        class FakeXmp (XmpBaseValue):
+            def __init__ (self):
+                pass
+        a = FakeXmp()
+
+        with self.assertRaises(NotImplementedError):
+            value = a.py_value
 
 class TestURI (TestCase):
 
