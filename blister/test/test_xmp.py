@@ -4,7 +4,7 @@
 from collections.abc import MutableMapping
 from unittest import TestCase
 
-from blister.xmp import VanillaXMP, URI, XmpBaseValue
+from blister.xmp import VanillaXMP, URI, XmpBaseValue, XmpURI
 
 class TestVanillaXMP (TestCase):
 
@@ -26,6 +26,11 @@ class TestXMPValues (TestCase):
 
         with self.assertRaises(NotImplementedError):
             value = a.py_value
+
+    def test_uri_value (self):
+        uri = XmpURI(URI("hello"))
+        self.assertEqual(uri.py_value, URI("hello"))
+        self.assertEqual(repr(uri), "<XmpURI hello>")
 
 class TestURI (TestCase):
 

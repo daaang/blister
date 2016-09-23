@@ -63,6 +63,36 @@ class XmpBaseValue:
         raise NotImplementedError("{} isn't meant to ever be " \
                 "implemented directly".format(self.__class__.__name__))
 
+    def raise_invalid_init (self, expected, actual):
+        """Raise an error that the init value is invalid.
+
+        Both arguments should be str objects.
+        """
+
+        raise TypeError("Init value must be {}, not {}".format(
+                expected, actual))
+
+class XmpURI (XmpBaseValue):
+    """XMP URI value"""
+
+    def __init__ (self, uri):
+        """Set the internal value."""
+
+        # Be sure the internal value is valid.
+        if not isinstance(uri, URI):
+            self.raise_invalid_init("URI", uri.__class__.__name__)
+
+        self.value = uri
+
+    @property
+    def py_value (self):
+        """Return a pythonic value."""
+        return self.value
+
+    def __repr__ (self):
+        """Return an unambiguous representation."""
+        return "<{} {}>".format(self.__class__.__name__, self.value)
+
 class VanillaXMP (MutableMapping):
 
     def __delitem__ (self, key):
