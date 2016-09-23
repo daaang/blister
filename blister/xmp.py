@@ -149,6 +149,13 @@ class XmpInteger (XmpText):
     def __str__ (self):
         return "{:d}".format(self.value)
 
+class XmpCollection (XmpBaseValue):
+    """XMP Collection"""
+
+    @property
+    def py_value (self):
+        return self
+
 
 class VanillaXMP (MutableMapping):
 

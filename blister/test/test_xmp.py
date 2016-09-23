@@ -5,7 +5,7 @@ from collections.abc import MutableMapping
 from unittest import TestCase
 
 from blister.xmp import VanillaXMP, URI, XmpBaseValue, XmpURI, \
-        XmpText, XmpInteger
+        XmpText, XmpInteger, XmpCollection
 
 class TestVanillaXMP (TestCase):
 
@@ -70,6 +70,18 @@ class TestXMPValues (TestCase):
     def test_integer_only_accepts_int (self):
         with self.assertRaisesRegex(TypeError, "must be int.*not str"):
             nope = XmpInteger("oh no oh no")
+
+    def test_abstract_xmp_collection_cant_init (self):
+        with self.assertRaises(NotImplementedError):
+            nope = XmpCollection()
+
+    def test_abstract_xmp_collection_py_value (self):
+        class FakeCollection (XmpCollection):
+            def __init__ (self):
+                pass
+
+        col = FakeCollection()
+        self.assertIs(col.py_value, col)
 
 class TestURI (TestCase):
 
