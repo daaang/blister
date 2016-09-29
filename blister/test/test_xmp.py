@@ -46,6 +46,21 @@ class TestXMPValues (TestCase):
         uri = XmpURI("hello")
         self.assertTrue(isinstance(uri.py_value, URI))
 
+    def test_can_create_uri_from_uri (self):
+        uri = XmpURI("some_uri")
+        another = XmpURI(uri)
+        self.assertEqual(uri, another)
+
+    def test_can_compare_uris (self):
+        letter_a = XmpURI("aaaaa")
+        letter_o = XmpURI("ooooo")
+        self.assertTrue(letter_a < letter_o)
+        self.assertTrue(letter_a <= letter_o)
+        self.assertTrue(letter_a != letter_o)
+        self.assertFalse(letter_a > letter_o)
+        self.assertFalse(letter_a >= letter_o)
+        self.assertFalse(letter_a == letter_o)
+
     def test_text_value (self):
         text = XmpText("hello")
         self.assertTrue(isinstance(text, XmpBaseValue))
@@ -60,6 +75,21 @@ class TestXMPValues (TestCase):
         with self.assertRaisesRegex(TypeError, "must be str.*not int"):
             nope = XmpText(44)
 
+    def test_can_create_text_from_text (self):
+        text = XmpText("something")
+        another = XmpText(text)
+        self.assertEqual(text, another)
+
+    def test_can_compare_texts (self):
+        letter_a = XmpText("aaaaa")
+        letter_o = XmpText("ooooo")
+        self.assertTrue(letter_a < letter_o)
+        self.assertTrue(letter_a <= letter_o)
+        self.assertTrue(letter_a != letter_o)
+        self.assertFalse(letter_a > letter_o)
+        self.assertFalse(letter_a >= letter_o)
+        self.assertFalse(letter_a == letter_o)
+
     def test_int_value (self):
         i = XmpInteger(44)
 
@@ -71,6 +101,16 @@ class TestXMPValues (TestCase):
     def test_integer_only_accepts_int (self):
         with self.assertRaisesRegex(TypeError, "must be int.*not str"):
             nope = XmpInteger("oh no oh no")
+
+    def test_can_compare_ints (self):
+        twelve = XmpInteger(12)
+        forty = XmpInteger(40)
+        self.assertTrue(twelve < forty)
+        self.assertTrue(twelve <= forty)
+        self.assertTrue(twelve != forty)
+        self.assertFalse(twelve > forty)
+        self.assertFalse(twelve >= forty)
+        self.assertFalse(twelve == forty)
 
     def test_abstract_xmp_collection_cant_init (self):
         with self.assertRaises(NotImplementedError):

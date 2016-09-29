@@ -65,10 +65,96 @@ class XmpBaseValue:
         """
         self.__not_implemented()
 
-    def __not_implemented (self):
-        """Raise NotImplementedError."""
-        raise NotImplementedError("{} isn't meant to ever be " \
-                "implemented directly".format(self.__class__.__name__))
+    def compare (self, rhs):
+        """Raise NotImplementedError.
+
+        This should be overwritten to return an integer: 0 if this
+        instance is "equal" to the right-hand side, a negative number if
+        this instance is "less," or a positive number if this instance
+        is "greater."
+
+        What "equal," "less," and "greater" mean will be up to you.
+        """
+        self.__not_implemented()
+
+    def is_equal (self, rhs):
+        """Return true if the compare method returns 0.
+
+        It can usually be simpler to check equality than to run a full
+        compare, so you should probably overwrite this, but you don't
+        have to.
+        """
+        return self.compare(rhs) == 0
+
+    def __eq__ (self, rhs):
+        """Return true if this is equal to the right-hand side."""
+        if self.__is_same_class(rhs):
+            # We'll only actually test equality if the right hand side
+            # is a valid type.
+            return self.is_equal(rhs)
+
+        else:
+            # If it's not a valid type, it's not equal. No need to raise
+            # TypeError.
+            return False
+
+    def __ne__ (self, rhs):
+        """Return false if this is equal to the right-hand side."""
+        if self.__is_same_class(rhs):
+            # We'll only actually test equality if the right hand side
+            # is a valid type.
+            return not self.is_equal(rhs)
+
+        else:
+            # If it's not a valid type, it's not equal. No need to raise
+            # TypeError.
+            return True
+
+    def __lt__ (self, rhs):
+        """Return true if this is less than the right-hand side."""
+        if self.__is_same_class(rhs):
+            # We'll only compare the values if the right hand side is a
+            # valid type.
+            return self.compare(rhs) < 0
+
+        else:
+            # If it's not a valid type, we'll raise an exception.
+            self.__raise_cant_compare(rhs, "<")
+
+    def __gt__ (self, rhs):
+        """Return true if this is greater than the right-hand side."""
+        if self.__is_same_class(rhs):
+            # We'll only compare the values if the right hand side is a
+            # valid type.
+            return self.compare(rhs) > 0
+
+        else:
+            # If it's not a valid type, we'll raise an exception.
+            self.__raise_cant_compare(rhs, ">")
+
+    def __le__ (self, rhs):
+        """Return true if this is less than or equal to the right-hand
+        side."""
+        if self.__is_same_class(rhs):
+            # We'll only compare the values if the right hand side is a
+            # valid type.
+            return self.compare(rhs) <= 0
+
+        else:
+            # If it's not a valid type, we'll raise an exception.
+            self.__raise_cant_compare(rhs, "<=")
+
+    def __ge__ (self, rhs):
+        """Return true if this is greater than or equal to the
+        right-hand side."""
+        if self.__is_same_class(rhs):
+            # We'll only compare the values if the right hand side is a
+            # valid type.
+            return self.compare(rhs) >= 0
+
+        else:
+            # If it's not a valid type, we'll raise an exception.
+            self.__raise_cant_compare(rhs, ">=")
 
     def raise_invalid_init (self, expected, actual):
         """Raise an error that the init value is invalid.
@@ -79,64 +165,38 @@ class XmpBaseValue:
         raise TypeError("Init value must be {}, not {}".format(
                 expected, actual))
 
-class XmpURI (XmpBaseValue):
-    """XMP URI value"""
+    def __is_same_class (self, rhs):
+        return self.__class__ is rhs.__class__
 
-    def __init__ (self, uri):
-        """Set the internal value."""
+    def __raise_cant_compare (self, rhs, op):
+        raise TypeError("unorderable types: {}() {} {}()".format(
+                self.__class__.__name__, op, rhs.__class__.__name__))
 
-        if isinstance(uri, URI):
-            # We expect a URI.
-            self.value = uri
+    def __not_implemented (self):
+        raise NotImplementedError("{} isn't meant to ever be " \
+                "implemented directly".format(self.__class__.__name__))
 
-        elif isinstance(uri, str):
-            # We also allow a str object, which we'll convert to URI.
-            self.value = URI(uri)
-
-        else:
-            # But we don't accept anything else.
-            self.raise_invalid_init("URI", uri.__class__.__name__)
+class XmpBaseSimpleValue (XmpBaseValue):
 
     @property
     def py_value (self):
         """Return a pythonic value."""
         return self.value
 
-    def __repr__ (self):
-        """Return an unambiguous representation."""
-        if self.value:
-            return "<{} {}>".format(self.__class__.__name__, self.value)
+    def compare (self, rhs):
+        """Return a comparison integer."""
+        if self.is_equal(rhs):
+            return 0
+
+        elif self.value < rhs.value:
+            return -1
 
         else:
-            return "<{}>".format(self.__class__.__name__)
+            return 1
 
-class XmpText (XmpBaseValue):
-    """Simple XMP Value"""
-
-    # This is the basic type I expect for the internal value. Also, the
-    # py_value property should return something of this type.
-    py_type = str
-
-    def __init__ (self, value):
-        """Set the internal value."""
-
-        # Check that the init value is something we can work with.
-        if not self.is_valid_init_value(value):
-            # If it's not valid, raise TypeError.
-            self.raise_invalid_init(self.py_type.__name__,
-                    value.__class__.__name__)
-
-        # Cool! Set our internal value.
-        self.value = self.format_valid_init_value(value)
-
-    @property
-    def py_value (self):
-        """Return a pythonic value."""
-        return self.value
-
-    def __str__ (self):
-        """Return a string representation as would appear in XML."""
-        return str(self.value)
+    def is_equal (self, rhs):
+        """Return true if both values are equal."""
+        return self.value == rhs.value
 
     def __repr__ (self):
         """Return an unambiguous representation."""
@@ -146,6 +206,66 @@ class XmpText (XmpBaseValue):
         else:
             return "<{}>".format(self.__class__.__name__)
 
+class XmpURI (XmpBaseSimpleValue):
+    """XMP URI value"""
+
+    def __init__ (self, uri):
+        """Set the internal value."""
+
+        if isinstance(uri, str):
+            # We expect a str object.
+            self.__init_from_str(uri)
+
+        else:
+            # It's also possible that the value is an XMP value. Or
+            # maybe it's just not a valid init value at all.
+            self.__init_maybe_from_xmp_value(uri)
+
+    def __init_from_str (self, uri):
+        if isinstance(uri, URI):
+            # We know we have a str object, and if that str is a URI, we
+            # don't even need to init a new object. We can just set it.
+            self.value = uri
+
+        else:
+            # Ok it's some other sort of str object, so we need to
+            # create an actual URI object from it.
+            self.value = URI(uri)
+
+    def __init_maybe_from_xmp_value (self, uri):
+        if isinstance(uri, XmpURI):
+            # Cool! It's already an XMP URI. We can just take its value
+            # as-is.
+            self.value = uri.value
+
+        else:
+            # Oh no! It's some other thing that I can't deal with.
+            self.raise_invalid_init("URI", uri.__class__.__name__)
+
+    def __str__ (self):
+        """Return the URI value itself."""
+        return self.value
+
+class XmpText (XmpBaseSimpleValue):
+    """Simple XMP Value"""
+
+    # This is the basic type I expect for the internal value. Also, the
+    # py_value property should return something of this type.
+    py_type = str
+
+    def __init__ (self, value):
+        """Set the internal value."""
+
+        if isinstance(value, self.__class__):
+            self.value = value.value
+
+        else:
+            self.__init_from_py_value(value)
+
+    def __str__ (self):
+        """Return a string representation as would appear in XML."""
+        return str(self.value)
+
     def is_valid_init_value (self, value):
         """Return true if the value is of a valid init format."""
         return isinstance(value, self.py_type)
@@ -153,6 +273,16 @@ class XmpText (XmpBaseValue):
     def format_valid_init_value (self, value):
         """Return the value we should store."""
         return value
+
+    def __init_from_py_value (self, value):
+        # Check that the init value is something we can work with.
+        if not self.is_valid_init_value(value):
+            # If it's not valid, raise TypeError.
+            self.raise_invalid_init(self.py_type.__name__,
+                    value.__class__.__name__)
+
+        # Cool! Set our internal value.
+        self.value = self.format_valid_init_value(value)
 
 class XmpInteger (XmpText):
     """XMP Integer"""
