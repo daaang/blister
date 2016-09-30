@@ -28,6 +28,11 @@ class TestXmpBaseValue (unittest.TestCase):
                 "^(XmpBaseValue|FakeXmp) isn't meant to ever be " \
                         "implemented directly$")
 
+    def assert_cant_compare (self, op, other):
+        return self.assertRaisesRegex(TypeError,
+                r"^unorderable types: FakeXmp\(\) {} {}\(\)$".format(
+                        op, other))
+
     def test_wont_init (self):
         with self.assert_not_implemented():
             a = XmpBaseValue()
@@ -35,6 +40,62 @@ class TestXmpBaseValue (unittest.TestCase):
     def test_has_no_py_value (self):
         with self.assert_not_implemented():
             value = self.fake1.py_value
+
+    def test_comparisons (self):
+        with self.assert_not_implemented():
+            result = self.fake1 == self.fake2
+
+        with self.assert_not_implemented():
+            result = self.fake1 != self.fake2
+
+        with self.assert_not_implemented():
+            result = self.fake1 < self.fake2
+
+        with self.assert_not_implemented():
+            result = self.fake1 > self.fake2
+
+        with self.assert_not_implemented():
+            result = self.fake1 <= self.fake2
+
+        with self.assert_not_implemented():
+            result = self.fake1 >= self.fake2
+
+    def test_working_comparisons (self):
+        class Comparible (XmpBaseValue):
+            def __init__ (self, result):
+                self.result = result
+
+            def compare (self, rhs):
+                return self.result
+
+        equal = Comparible(0)
+        less = Comparible(-1)
+        more = Comparible(1)
+
+        self.assertTrue(equal == less)
+        self.assertFalse(less == equal)
+
+        self.assertTrue(less < more)
+        self.assertTrue(more > less)
+
+        self.assertTrue(less <= more)
+        self.assertTrue(more >= less)
+
+    def test_comparing_with_wrong_type (self):
+        self.assertFalse(self.fake1 == 0)
+        self.assertTrue(self.fake1 != "hi")
+
+        with self.assert_cant_compare("<", "int"):
+            result = self.fake1 < 70
+
+        with self.assert_cant_compare(">", "int"):
+            result = self.fake1 > 70
+
+        with self.assert_cant_compare("<=", "int"):
+            result = self.fake1 <= 70
+
+        with self.assert_cant_compare(">=", "int"):
+            result = self.fake1 >= 70
 
 class SimpleXmpTester:
     """Provide some general value testing functions.
