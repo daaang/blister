@@ -156,6 +156,10 @@ class XmpBaseValue:
             # If it's not a valid type, we'll raise an exception.
             self.__raise_cant_compare(rhs, ">=")
 
+    def __bool__ (self):
+        """Return truthiness."""
+        self.__not_implemented()
+
     def raise_invalid_init (self, expected, actual):
         """Raise an error that the init value is invalid.
 
@@ -205,6 +209,10 @@ class XmpBaseSimpleValue (XmpBaseValue):
 
         else:
             return "<{}>".format(self.__class__.__name__)
+
+    def __bool__ (self):
+        """Return the same truthiness as our value."""
+        return bool(self.value)
 
 class XmpURI (XmpBaseSimpleValue):
     """XMP URI value"""
