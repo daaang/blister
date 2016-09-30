@@ -151,6 +151,7 @@ class TestXmpURI (SimpleXmpTester, unittest.TestCase):
     def test_empty_uri (self):
         uri = XmpURI(URI(""))
         self.assertEqual(repr(uri), "<XmpURI>")
+        self.assertFalse(bool(uri))
 
     def test_uri_only_accepts_uri_objects (self):
         with self.assertRaises(TypeError):
@@ -170,8 +171,9 @@ class TestXmpText (SimpleXmpTester, unittest.TestCase):
         self.less = XmpText("ay yo")
 
     def test_empty_text (self):
-        uri = XmpText("")
-        self.assertEqual(repr(uri), "<XmpText>")
+        text = XmpText("")
+        self.assertEqual(repr(text), "<XmpText>")
+        self.assertFalse(bool(text))
 
     def test_text_only_accepts_str (self):
         with self.assertRaisesRegex(TypeError, "must be str.*not int"):
@@ -193,6 +195,9 @@ class TestXmpInteger (SimpleXmpTester, unittest.TestCase):
     def test_integer_only_accepts_int (self):
         with self.assertRaisesRegex(TypeError, "must be int.*not str"):
             nope = XmpInteger("oh no oh no")
+
+    def test_zero_is_false (self):
+        self.assertFalse(bool(XmpInteger(0)))
 
 class TestXMPValues (unittest.TestCase):
 
