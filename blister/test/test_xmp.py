@@ -97,6 +97,10 @@ class TestXmpBaseValue (unittest.TestCase):
         with self.assert_cant_compare(">=", "int"):
             result = self.fake1 >= 70
 
+    def test_truthiness (self):
+        with self.assert_not_implemented():
+            result = bool(self.fake1)
+
 class SimpleXmpTester:
     """Provide some general value testing functions.
 
@@ -131,6 +135,9 @@ class SimpleXmpTester:
     def test_create_from_xmp_value (self):
         new_value = self.main.__class__(self.main)
         self.assertEqual(new_value, self.main)
+
+    def test_true_value (self):
+        self.assertTrue(bool(self.main))
 
 class TestXmpURI (SimpleXmpTester, unittest.TestCase):
 
