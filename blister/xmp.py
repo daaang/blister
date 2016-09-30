@@ -307,6 +307,30 @@ class XmpBaseCollection (XmpBaseValue):
     def py_value (self):
         return self
 
+class XmpStructure (XmpBaseCollection):
+
+    def __init__ (self, mapping_or_iterable = { }):
+        self.value = { }
+
+    def __getitem__ (self, key):
+        namespace, name = self.__split_key(key)
+
+    def __setitem__ (self, key, value):
+        namespace, name = self.__split_key(key)
+
+    def __split_key (self, key):
+        if self.__is_valid_key(key):
+            return key
+
+        else:
+            raise KeyError("expected duple (str(), str()) key")
+
+    def __is_valid_key (self, key):
+        return isinstance(key, tuple)       \
+                and len(key) == 2           \
+                and isinstance(key[0], str) \
+                and isinstance(key[1], str)
+
 class XmpBaseArray (XmpBaseCollection):
     """XMP Array"""
 

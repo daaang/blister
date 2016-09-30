@@ -5,7 +5,7 @@ from collections.abc import MutableMapping
 import unittest
 
 from blister.xmp import VanillaXMP, URI, XmpBaseValue, XmpURI, \
-        XmpText, XmpInteger, XmpBaseCollection
+        XmpText, XmpInteger, XmpBaseCollection, XmpStructure
 
 class TestVanillaXMP (unittest.TestCase):
 
@@ -199,7 +199,7 @@ class TestXmpInteger (SimpleXmpTester, unittest.TestCase):
     def test_zero_is_false (self):
         self.assertFalse(bool(XmpInteger(0)))
 
-class TestXMPValues (unittest.TestCase):
+class TestXmpBaseCollection (unittest.TestCase):
 
     def test_abstract_xmp_collection_cant_init (self):
         with self.assertRaises(NotImplementedError):
@@ -212,6 +212,22 @@ class TestXMPValues (unittest.TestCase):
 
         col = FakeCollection()
         self.assertIs(col.py_value, col)
+
+class TestXmpStructure (unittest.TestCase):
+
+    def help_test_invalid_key (self, structure, key):
+        with self.assertRaises(KeyError):
+            x = structure[key]
+
+        with self.assertRaises(KeyError):
+            structure[key] = 0
+
+    def test_recognize_invalid_keys (self):
+        s = XmpStructure()
+        self.help_test_invalid_key(s, "hi")
+        self.help_test_invalid_key(s, 0)
+        self.help_test_invalid_key(s, ("one tuple",))
+        self.help_test_invalid_key(s, ("triple", "instead of", "duple"))
 
 class TestURI (unittest.TestCase):
 
