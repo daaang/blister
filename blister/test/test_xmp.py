@@ -2,37 +2,83 @@
 # All Rights Reserved. Licensed according to the terms of the Revised
 # BSD License. See LICENSE.txt for details.
 from collections.abc import MutableMapping
-from unittest import TestCase
+import unittest
 
 from blister.xmp import VanillaXMP, URI, XmpBaseValue, XmpURI, \
         XmpText, XmpInteger, XmpBaseCollection
 
-class TestVanillaXMP (TestCase):
+class TestVanillaXMP (unittest.TestCase):
 
     def test_is_mutable_mapping (self):
         xmp = VanillaXMP()
         self.assertTrue(isinstance(xmp, MutableMapping))
 
-class TestXMPValues (TestCase):
+class TestXmpBaseValue (unittest.TestCase):
 
-    def test_abstract_value_wont_init (self):
-        with self.assertRaises(NotImplementedError):
-            a = XmpBaseValue()
-
-    def test_abstract_value_has_no_py_value (self):
+    def setUp (self):
         class FakeXmp (XmpBaseValue):
             def __init__ (self):
                 pass
-        a = FakeXmp()
 
-        with self.assertRaises(NotImplementedError):
-            value = a.py_value
+        self.fake1 = FakeXmp()
+        self.fake2 = FakeXmp()
 
-    def test_uri_value (self):
-        uri = XmpURI(URI("hello"))
-        self.assertTrue(isinstance(uri, XmpBaseValue))
-        self.assertEqual(uri.py_value, URI("hello"))
-        self.assertEqual(repr(uri), "<XmpURI hello>")
+    def assert_not_implemented (self):
+        return self.assertRaisesRegex(NotImplementedError,
+                "^(XmpBaseValue|FakeXmp) isn't meant to ever be " \
+                        "implemented directly$")
+
+    def test_wont_init (self):
+        with self.assert_not_implemented():
+            a = XmpBaseValue()
+
+    def test_has_no_py_value (self):
+        with self.assert_not_implemented():
+            value = self.fake1.py_value
+
+class SimpleXmpTester:
+    """Provide some general value testing functions.
+
+    The idea is to implement this alongside unittest.TestCase.
+    """
+
+    def setUp (self):
+        """You'll need to overwrite this."""
+        self.main = "You need to overwrite setUp."
+        self.less = self.main
+
+        self.main_py_value = self.main
+        self.main_repr = self.main
+
+    def test_is_xmp_value (self):
+        self.assertTrue(isinstance(self.main, XmpBaseValue))
+
+    def test_py_value (self):
+        self.assertEqual(self.main.py_value, self.main_py_value)
+
+    def test_repr (self):
+        self.assertEqual(repr(self.main), self.main_repr)
+
+    def test_comparisons (self):
+        self.assertTrue(self.less < self.main)
+        self.assertTrue(self.less <= self.main)
+        self.assertTrue(self.less != self.main)
+        self.assertFalse(self.less > self.main)
+        self.assertFalse(self.less >= self.main)
+        self.assertFalse(self.less == self.main)
+
+    def test_create_from_xmp_value (self):
+        new_value = self.main.__class__(self.main)
+        self.assertEqual(new_value, self.main)
+
+class TestXmpURI (SimpleXmpTester, unittest.TestCase):
+
+    def setUp (self):
+        self.main_py_value = URI("hello")
+        self.main_repr = "<XmpURI hello>"
+
+        self.main = XmpURI(self.main_py_value)
+        self.less = XmpURI(URI("ay yo"))
 
     def test_empty_uri (self):
         uri = XmpURI(URI(""))
@@ -46,26 +92,14 @@ class TestXMPValues (TestCase):
         uri = XmpURI("hello")
         self.assertTrue(isinstance(uri.py_value, URI))
 
-    def test_can_create_uri_from_uri (self):
-        uri = XmpURI("some_uri")
-        another = XmpURI(uri)
-        self.assertEqual(uri, another)
+class TestXmpText (SimpleXmpTester, unittest.TestCase):
 
-    def test_can_compare_uris (self):
-        letter_a = XmpURI("aaaaa")
-        letter_o = XmpURI("ooooo")
-        self.assertTrue(letter_a < letter_o)
-        self.assertTrue(letter_a <= letter_o)
-        self.assertTrue(letter_a != letter_o)
-        self.assertFalse(letter_a > letter_o)
-        self.assertFalse(letter_a >= letter_o)
-        self.assertFalse(letter_a == letter_o)
+    def setUp (self):
+        self.main_py_value = "hello"
+        self.main_repr = "<XmpText hello>"
 
-    def test_text_value (self):
-        text = XmpText("hello")
-        self.assertTrue(isinstance(text, XmpBaseValue))
-        self.assertEqual(text.py_value, "hello")
-        self.assertEqual(repr(text), "<XmpText hello>")
+        self.main = XmpText(self.main_py_value)
+        self.less = XmpText("ay yo")
 
     def test_empty_text (self):
         uri = XmpText("")
@@ -75,42 +109,24 @@ class TestXMPValues (TestCase):
         with self.assertRaisesRegex(TypeError, "must be str.*not int"):
             nope = XmpText(44)
 
-    def test_can_create_text_from_text (self):
-        text = XmpText("something")
-        another = XmpText(text)
-        self.assertEqual(text, another)
+class TestXmpInteger (SimpleXmpTester, unittest.TestCase):
 
-    def test_can_compare_texts (self):
-        letter_a = XmpText("aaaaa")
-        letter_o = XmpText("ooooo")
-        self.assertTrue(letter_a < letter_o)
-        self.assertTrue(letter_a <= letter_o)
-        self.assertTrue(letter_a != letter_o)
-        self.assertFalse(letter_a > letter_o)
-        self.assertFalse(letter_a >= letter_o)
-        self.assertFalse(letter_a == letter_o)
+    def setUp (self):
+        self.main_py_value = 44
+        self.main_repr = "<XmpInteger 44>"
 
-    def test_int_value (self):
-        i = XmpInteger(44)
+        self.main = XmpInteger(self.main_py_value)
+        self.less = XmpInteger(12)
 
-        self.assertTrue(isinstance(i, XmpText))
-        self.assertEqual(i.py_value, 44)
-        self.assertEqual(repr(i), "<XmpInteger 44>")
-        self.assertEqual(str(i), "44")
+    def test_str (self):
+        self.assertEqual(str(self.main),
+                "{:d}".format(self.main_py_value))
 
     def test_integer_only_accepts_int (self):
         with self.assertRaisesRegex(TypeError, "must be int.*not str"):
             nope = XmpInteger("oh no oh no")
 
-    def test_can_compare_ints (self):
-        twelve = XmpInteger(12)
-        forty = XmpInteger(40)
-        self.assertTrue(twelve < forty)
-        self.assertTrue(twelve <= forty)
-        self.assertTrue(twelve != forty)
-        self.assertFalse(twelve > forty)
-        self.assertFalse(twelve >= forty)
-        self.assertFalse(twelve == forty)
+class TestXMPValues (unittest.TestCase):
 
     def test_abstract_xmp_collection_cant_init (self):
         with self.assertRaises(NotImplementedError):
@@ -124,7 +140,7 @@ class TestXMPValues (TestCase):
         col = FakeCollection()
         self.assertIs(col.py_value, col)
 
-class TestURI (TestCase):
+class TestURI (unittest.TestCase):
 
     def setUp (self):
         self.eg_str = "meaningless example"
