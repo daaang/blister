@@ -4,8 +4,15 @@
 from collections.abc import MutableMapping
 import unittest
 
-from blister.xmp import VanillaXMP, URI, XmpBaseValue, XmpURI, \
-        XmpText, XmpInteger, XmpBaseCollection, XmpStructure
+from blister.xmp import VanillaXMP, \
+        TwoWayMapping, \
+        URI, \
+        XmpBaseValue, \
+        XmpURI, \
+        XmpText, \
+        XmpInteger, \
+        XmpBaseCollection, \
+        XmpStructure
 
 class TestVanillaXMP (unittest.TestCase):
 
@@ -228,6 +235,95 @@ class TestXmpStructure (unittest.TestCase):
         self.help_test_invalid_key(s, 0)
         self.help_test_invalid_key(s, ("one tuple",))
         self.help_test_invalid_key(s, ("triple", "instead of", "duple"))
+
+class TestTwoWayMapping (unittest.TestCase):
+
+    def setUp (self):
+        self.main = TwoWayMapping(
+                hey = "hello",
+                bye = "later")
+
+    def test_basic_setup (self):
+        self.assertEqual(len(self.main), 2)
+        self.assertIn("hey", self.main)
+        self.assertIn("bye", self.main)
+        self.assertEqual(self.main["hey"], "hello")
+        self.assertEqual(self.main["bye"], "later")
+
+        self.assertNotIn("yee", self.main)
+        with self.assertRaises(KeyError):
+            yee = self.main["yee"]
+
+    def test_reverse_mapping (self):
+        self.assertTrue(self.main.contains_value("hello"))
+        self.assertTrue(self.main.contains_value("later"))
+        self.assertEqual(self.main.get_value("hello"), "hey")
+        self.assertEqual(self.main.get_value("later"), "bye")
+
+        self.assertFalse(self.main.contains_value("yee"))
+        with self.assertRaises(KeyError):
+            yee = self.main.get_value("yee")
+
+    def test_no_key_value_mixup (self):
+        self.assertNotIn("hello", self.main)
+        self.assertNotIn("later", self.main)
+
+        self.assertFalse(self.main.contains_value("hey"))
+        self.assertFalse(self.main.contains_value("bye"))
+
+    def test_deletion_by_key (self):
+        del self.main["hey"]
+
+        self.assertEqual(len(self.main), 1)
+
+        for key in self.main.keys():
+            self.assertEqual(key, "bye")
+        for value in self.main.values():
+            self.assertEqual(value, "later")
+
+        with self.assertRaises(KeyError):
+            del self.main["later"]
+
+        for key in self.main.keys():
+            self.assertEqual(key, "bye")
+        for value in self.main.values():
+            self.assertEqual(value, "later")
+
+    def test_deletion_by_value (self):
+        self.main.del_value("hello")
+
+        self.assertEqual(len(self.main), 1)
+
+        for key in self.main.keys():
+            self.assertEqual(key, "bye")
+        for value in self.main.values():
+            self.assertEqual(value, "later")
+
+        with self.assertRaises(KeyError):
+            self.main.del_value("bye")
+
+        for key in self.main.keys():
+            self.assertEqual(key, "bye")
+        for value in self.main.values():
+            self.assertEqual(value, "later")
+
+    def test_overwriting_keys (self):
+        self.assertTrue(self.main.contains_value("hello"))
+        self.main["hey"] = "holla"
+        self.assertFalse(self.main.contains_value("hello"))
+
+        self.assertEqual(len(self.main), 2)
+
+        self.assertEqual(set(self.main.items()),
+                {("hey", "holla"), ("bye", "later")})
+
+    def test_overwriting_values (self):
+        with self.assertRaisesRegex(ValueError,
+                r"^value already in mapping: "):
+            self.main["new"] = "hello"
+
+        self.assertEqual(set(self.main.items()),
+                {("hey", "hello"), ("bye", "later")})
 
 class TestURI (unittest.TestCase):
 

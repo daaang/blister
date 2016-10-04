@@ -4,6 +4,138 @@
 from collections import namedtuple
 from collections.abc import MutableMapping
 
+class TwoWayMapping (MutableMapping):
+
+    def __init__ (self, mapping_or_iterable = (), **kwargs):
+        """Init a new two-way mapping."""
+        # First create new internal dictionaries.
+        self.__init_dicts()
+
+        # Then deepcopy any included mapping/iterable as well as any
+        # keyword arguments.
+        self.__iter_update(mapping_or_iterable, kwargs)
+
+    def __getitem__ (self, key):
+        """Return a value given its key.
+
+        Raises KeyError if the key is not present.
+        """
+
+        return self.__by_key[key]
+
+    def get_value (self, value):
+        """Return a key given its value.
+
+        Raises KeyError if the value is not present.
+        """
+
+        return self.__by_value[value]
+
+    def __delitem__ (self, key):
+        """Delete a key-value pair given the key.
+
+        Raises KeyError if the key is not present.
+        """
+
+        # Rather than simply delete the key from the dict, we pop out
+        # the value at the same time.
+        value = self.__by_key.pop(key)
+
+        # We need that value to also pop it out from the value dict.
+        del self.__by_value[value]
+
+    def del_value (self, value):
+        """Delete a key-value pair given the value.
+
+        Raises KeyError if the value is not present.
+        """
+
+        # Rather than simply delete the value from the dict, we pop out
+        # the key at the same time.
+        key = self.__by_value.pop(value)
+
+        # We need that key to also pop it out from the key dict.
+        del self.__by_key[key]
+
+    def __setitem__ (self, key, value):
+        """Insert a key-value pair by key.
+
+        Raises ValueError if the value is already present in here.
+        However, if the key is already present, it will be overridden
+        just as in any dict.
+
+        Unlike selection and deletion, I don't allow insertion by value.
+        There is no set_value method.
+        """
+
+        # First, we need to be sure that we're ready to receive both the
+        # key and the value.
+        self.__assert_new_value(value)
+        self.__assert_new_key(key)
+
+        # Cool! All that's left is to insert them.
+        self.__insert_new_keypair(key, value)
+
+    def __len__ (self):
+        """Return count of key-value pairs stored."""
+        return len(self.__by_key)
+
+    def __iter__ (self):
+        """Iterate through keys."""
+        return self.keys()
+
+    def __contains__ (self, key):
+        """Return true if we contain the key."""
+        return key in self.__by_key
+
+    def contains_value (self, value):
+        """Return true if we contain the value."""
+        return value in self.__by_value
+
+    def keys (self):
+        """Iterate through keys."""
+        return iter(self.__by_key)
+
+    def values (self):
+        """Iterate through values."""
+        return iter(self.__by_value)
+
+    def items (self):
+        """Iterate through key-value pairs."""
+        return self.__by_key.items()
+
+    def __init_dicts (self):
+        # Our internals are two dicts: one keyed on keys, another on
+        # values.
+        self.__by_key = { }
+        self.__by_value = { }
+
+    def __iter_update (self, *args):
+        for mapping_or_iterable in args:
+            # Each argument must be either a mapping or an iterable of
+            # duples.
+            self.update(mapping_or_iterable)
+
+    def __assert_new_value (self, value):
+        if value in self.__by_value:
+            # If we already have this value in the reverse dictionary,
+            # we raise a ValueError.
+            raise ValueError("value already in mapping: " + repr(value))
+
+    def __assert_new_key (self, key):
+        if key in self:
+            # If we already have this key, that's actually fine. All we
+            # have to do is delete it. We use our own containment test
+            # and deletion because we want to fully remove the key and
+            # value from both internal dicts.
+            del self[key]
+
+    def __insert_new_keypair (self, key, value):
+        # This assumes I'm not worried about collisions or anything
+        # weird. This method is unsafe and does no checking.
+        self.__by_key[key] = value
+        self.__by_value[value] = key
+
 class URI (str):
     """URI string
 
