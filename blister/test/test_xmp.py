@@ -353,3 +353,12 @@ class TestURI (unittest.TestCase):
     def test_repr (self):
         self.assertEqual(repr(self.eg_uri),
                 "<URI {}>".format(self.eg_str))
+
+    def test_make_uri_from_str_class (self):
+        class SomeStrClass:
+            def __str__ (self):
+                return "hello"
+
+        eg = SomeStrClass()
+
+        self.assertEqual(URI(eg), "hello")
