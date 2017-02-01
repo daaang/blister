@@ -1,3 +1,6 @@
+.*.swp
+*.c
 __pycache__/
-*.pyc
-*.pyo
+Blister.egg-info/
+build/
+dist/
