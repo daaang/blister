@@ -2,19 +2,16 @@
 # All Rights Reserved. Licensed according to the terms of the Revised
 # BSD License. See LICENSE.txt for details.
 
+cdef set DEFAULT_XMP_NAMESPACES = {
+    "stRef",
+    "dc",
+    "xmp",
+    "xmpRights",
+    "xmpMM",
+    "xmpidq",
+}
+
 cdef class XMP:
-
-    cdef set namespaces
-
-    def __init__ (self):
-        self.namespaces = {
-            "stRef",
-            "dc",
-            "xmp",
-            "xmpRights",
-            "xmpMM",
-            "xmpidq",
-        }
 
     def __len__ (self):
         return 0
@@ -23,16 +20,16 @@ cdef class XMP:
         return iter(())
 
     def __getattr__ (self, name):
-        if name in self.namespaces:
+        if name in DEFAULT_XMP_NAMESPACES:
             return ()
 
         else:
-            self.__raise_no_attr(name)
+            self.raise_error_no_attr(name)
 
     def __repr__ (self):
         return "<{}>".format(self.__class__.__name__)
 
-    def __raise_no_attr (self, name):
+    cdef raise_error_no_attr (self, name):
         obj = "{}.{}".format(self.__class__.__module__,
                              self.__class__.__name__)
 
