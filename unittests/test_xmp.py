@@ -4,6 +4,8 @@
 from hamcrest import *
 import unittest
 
+from blister.xmp import XMP
+
 class NothingTest (unittest.TestCase):
 
     def test_working_testing_environment (self):
