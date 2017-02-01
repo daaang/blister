@@ -3,6 +3,7 @@
 # BSD License. See LICENSE.txt for details.
 from hamcrest import *
 import unittest
+from .hamcrest import evaluates_to
 
 from blister.xmp import XMP
 
@@ -10,3 +11,4 @@ class XMPTest (unittest.TestCase):
 
     def test_degenerate (self):
         xmp = XMP()
+        assert_that(xmp, evaluates_to(False))

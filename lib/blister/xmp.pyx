@@ -3,4 +3,9 @@
 # BSD License. See LICENSE.txt for details.
 
 class XMP:
-    pass
+
+    def __bool__ (self):
+        return False
+
+    def __repr__ (self):
+        return "<{}>".format(self.__class__.__name__)
