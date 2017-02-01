@@ -15,7 +15,16 @@ cdef class XMP:
             return ()
 
         else:
-            raise AttributeError
+            self.__raise_no_attr(name)
 
     def __repr__ (self):
         return "<{}>".format(self.__class__.__name__)
+
+    def __raise_no_attr (self, name):
+        obj = "{}.{}".format(self.__class__.__module__,
+                             self.__class__.__name__)
+
+        message = "{} object has no attribute {}".format(repr(obj),
+                                                         repr(name))
+
+        raise AttributeError(message)
