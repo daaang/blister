@@ -4,9 +4,7 @@
 from hamcrest import *
 import unittest
 
-from blister.tmp import five
-
 class NothingTest (unittest.TestCase):
 
     def test_working_testing_environment (self):
-        assert_that(five, is_(equal_to(5)))
+        pass
