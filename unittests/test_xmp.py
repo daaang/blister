@@ -13,3 +13,4 @@ class XMPTest (unittest.TestCase):
         xmp = XMP()
         assert_that(xmp, evaluates_to(False))
         assert_that(xmp, has_length(0))
+        assert_that(list(xmp), is_(equal_to([])))
