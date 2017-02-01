@@ -54,7 +54,6 @@ setup(
         " :: ".join(("Development Status", CURRENT_STATUS)),
         " :: ".join(("License", "OSI Approved", "BSD License")),
         " :: ".join(("Natural Language", "English")),
-        " :: ".join(("Programming Language", "C")),
         " :: ".join(("Programming Language", "Cython")),
         " :: ".join(("Programming Language", "Python", "3", "Only")),
         " :: ".join(("Topic", "Multimedia",
