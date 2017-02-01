@@ -9,6 +9,18 @@ from blister.xmp import XMP
 
 class GivenEmptyXMP (unittest.TestCase):
 
+    namespaces = (
+        "stRef",
+        "dc",
+        "xmp",
+        "xmpRights",
+        "xmpMM",
+        "xmpidq",
+        "exifEX",
+        "exif",
+        "tiff",
+    )
+
     def setUp (self):
         self.xmp = XMP()
 
@@ -25,16 +37,11 @@ class GivenEmptyXMP (unittest.TestCase):
                     raises(AttributeError))
 
     def test_default_xmp_namespaces_are_empty (self):
-        assert_that(self.xmp.stRef, has_length(0))
-        assert_that(self.xmp.dc, has_length(0))
-        assert_that(self.xmp.xmp, has_length(0))
-        assert_that(self.xmp.xmpRights, has_length(0))
-        assert_that(self.xmp.xmpMM, has_length(0))
-        assert_that(self.xmp.xmpidq, has_length(0))
-        assert_that(self.xmp.exifEX, has_length(0))
-        assert_that(self.xmp.exif, has_length(0))
-        assert_that(self.xmp.tiff, has_length(0))
+        for namespace in self.namespaces:
+            assert_that(getattr(self.xmp, namespace), has_length(0))
 
     def test_namespaces_are_also_accessible_via_getitem (self):
         assert_that(calling(lambda x: x["fake"]).with_args(self.xmp),
+                    raises(KeyError))
+        assert_that(calling(lambda x: x["bbbbbb"]).with_args(self.xmp),
                     raises(KeyError))
