@@ -2,10 +2,7 @@
 # All Rights Reserved. Licensed according to the terms of the Revised
 # BSD License. See LICENSE.txt for details.
 
-class XMP:
-
-    def __bool__ (self):
-        return False
+cdef class XMP:
 
     def __len__ (self):
         return 0
