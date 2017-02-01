@@ -24,5 +24,5 @@ class GivenEmptyXMP (unittest.TestCase):
         assert_that(calling(getattr).with_args(self.xmp, "also_fake"),
                     raises(AttributeError))
 
-    def test_default_xmp_namespaces_exist (self):
-        no_error = self.xmp.stRef
+    def test_default_xmp_namespaces_are_empty (self):
+        assert_that(self.xmp.stRef, has_length(0))
