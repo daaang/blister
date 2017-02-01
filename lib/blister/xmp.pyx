@@ -30,7 +30,11 @@ cdef class XMP:
             self.raise_error_no_attr(name)
 
     def __getitem__ (self, key):
-        raise KeyError
+        if key in DEFAULT_XMP_NAMESPACES:
+            return ()
+
+        else:
+            raise KeyError(key)
 
     def __repr__ (self):
         return "<{}>".format(self.__class__.__name__)

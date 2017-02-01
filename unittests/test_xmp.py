@@ -45,3 +45,6 @@ class GivenEmptyXMP (unittest.TestCase):
                     raises(KeyError))
         assert_that(calling(lambda x: x["bbbbbb"]).with_args(self.xmp),
                     raises(KeyError))
+
+        for namespace in self.namespaces:
+            assert_that(self.xmp[namespace], has_length(0))
