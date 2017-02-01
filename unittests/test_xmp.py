@@ -31,3 +31,6 @@ class GivenEmptyXMP (unittest.TestCase):
         assert_that(self.xmp.xmpRights, has_length(0))
         assert_that(self.xmp.xmpMM, has_length(0))
         assert_that(self.xmp.xmpidq, has_length(0))
+        assert_that(self.xmp.exifEX, has_length(0))
+        assert_that(self.xmp.exif, has_length(0))
+        assert_that(self.xmp.tiff, has_length(0))

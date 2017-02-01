@@ -9,6 +9,9 @@ cdef set DEFAULT_XMP_NAMESPACES = {
     "xmpRights",
     "xmpMM",
     "xmpidq",
+    "exifEX",
+    "exif",
+    "tiff",
 }
 
 cdef class XMP:
