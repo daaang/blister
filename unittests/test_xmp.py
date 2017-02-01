@@ -5,7 +5,7 @@ from hamcrest import *
 import unittest
 from .hamcrest import evaluates_to
 
-from blister.xmp import XMP
+from blister.xmp import XMP, XMPNamespace
 
 class GivenEmptyXMP (unittest.TestCase):
 
@@ -48,3 +48,8 @@ class GivenEmptyXMP (unittest.TestCase):
 
         for namespace in self.namespaces:
             assert_that(self.xmp[namespace], has_length(0))
+
+class XMPNamespaceTest (unittest.TestCase):
+
+    def test_nothing (self):
+        pass

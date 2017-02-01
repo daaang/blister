@@ -14,6 +14,8 @@ cdef set DEFAULT_XMP_NAMESPACES = {
     "tiff",
 }
 
+XMPNamespace = None
+
 cdef class XMP:
 
     def __len__ (self):
