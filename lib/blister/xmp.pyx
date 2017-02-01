@@ -10,5 +10,9 @@ cdef class XMP:
     def __iter__ (self):
         return iter(())
 
+    def __getattr__ (self, name):
+        if name == "fake_namespace":
+            raise AttributeError
+
     def __repr__ (self):
         return "<{}>".format(self.__class__.__name__)

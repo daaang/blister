@@ -19,3 +19,7 @@ class XMPTest (unittest.TestCase):
         xmp = XMP()
         assert_that(calling(getattr).with_args(xmp, "fake_namespace"),
                     raises(AttributeError))
+
+    def test_default_xmp_namespaces_exist (self):
+        xmp = XMP()
+        no_error = xmp.stRef
