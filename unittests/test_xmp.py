@@ -12,3 +12,4 @@ class XMPTest (unittest.TestCase):
     def test_degenerate (self):
         xmp = XMP()
         assert_that(xmp, evaluates_to(False))
+        assert_that(xmp, has_length(0))
