@@ -14,3 +14,8 @@ class XMPTest (unittest.TestCase):
         assert_that(xmp, evaluates_to(False))
         assert_that(xmp, has_length(0))
         assert_that(list(xmp), is_(equal_to([])))
+
+    def test_not_all_attrs_exist (self):
+        xmp = XMP()
+        assert_that(calling(getattr).with_args(xmp, "fake_namespace"),
+                    raises(AttributeError))
