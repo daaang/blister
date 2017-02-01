@@ -7,7 +7,7 @@ from .hamcrest import evaluates_to
 
 from blister.xmp import XMP
 
-class XMPTest (unittest.TestCase):
+class GivenEmptyXMP (unittest.TestCase):
 
     def setUp (self):
         self.xmp = XMP()
