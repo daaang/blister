@@ -4,6 +4,18 @@
 
 cdef class XMP:
 
+    cdef set namespaces
+
+    def __init__ (self):
+        self.namespaces = {
+            "stRef",
+            "dc",
+            "xmp",
+            "xmpRights",
+            "xmpMM",
+            "xmpidq",
+        }
+
     def __len__ (self):
         return 0
 
@@ -11,7 +23,7 @@ cdef class XMP:
         return iter(())
 
     def __getattr__ (self, name):
-        if name in {"stRef", "dc"}:
+        if name in self.namespaces:
             return ()
 
         else:
