@@ -11,7 +11,7 @@ cdef class XMP:
         return iter(())
 
     def __getattr__ (self, name):
-        if name == "stRef":
+        if name in {"stRef", "dc"}:
             return ()
 
         else:

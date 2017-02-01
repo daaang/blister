@@ -26,3 +26,4 @@ class GivenEmptyXMP (unittest.TestCase):
 
     def test_default_xmp_namespaces_are_empty (self):
         assert_that(self.xmp.stRef, has_length(0))
+        assert_that(self.xmp.dc, has_length(0))
