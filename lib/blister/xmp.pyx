@@ -14,7 +14,8 @@ cdef set DEFAULT_XMP_NAMESPACES = {
     "tiff",
 }
 
-XMPNamespace = None
+cdef class XMPNamespace:
+    pass
 
 cdef class XMP:
 

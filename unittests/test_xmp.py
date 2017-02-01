@@ -51,5 +51,5 @@ class GivenEmptyXMP (unittest.TestCase):
 
 class XMPNamespaceTest (unittest.TestCase):
 
-    def test_nothing (self):
-        pass
+    def test_degenerate (self):
+        ns = XMPNamespace()
