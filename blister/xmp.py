@@ -68,13 +68,14 @@ class TwoWayMapping (MutableMapping):
         There is no set_value method.
         """
 
-        # First, we need to be sure that we're ready to receive both the
-        # key and the value.
-        self.__assert_new_value(value)
+        self.set_dual_value(key, value, value)
+
+    def set_dual_value (self, key, value, value_hash):
+        self.__assert_new_value(value_hash)
         self.__assert_new_key(key)
 
-        # Cool! All that's left is to insert them.
-        self.__insert_new_keypair(key, value)
+        self.__by_key[key] = value
+        self.__by_value[value_hash] = key
 
     def __len__ (self):
         """Return count of key-value pairs stored."""
@@ -167,12 +168,6 @@ class URI (str):
     def __repr__ (self):
         """Return a str representing a URI (rather than a str)."""
         return "<{} {}>".format(self.__class__.__name__, self)
-
-URI_RDF = URI("http://www.w3.org/1999/02/22-rdf-syntax-ns#")
-URI_X   = URI("adobe:ns:meta/")
-URI_XML = URI("http://www.w3.org/XML/1998/namespace")
-
-UriTag = namedtuple("UriTag", ("uri", "name"))
 
 class XmpBaseValue:
     """Abstract XMP Value"""
@@ -432,6 +427,65 @@ class XmpInteger (XmpText):
     def __str__ (self):
         return "{:d}".format(self.value)
 
+class XmpNamespace (MutableMapping):
+
+    def __init__ (self, uri, mapping_or_iterable = (), **kwargs):
+        self.__uri = uri
+        self.__dict = { }
+
+        self.update(mapping_or_iterable)
+        self.update(kwargs)
+
+    def __str__ (self):
+        return self.__uri
+
+    @property
+    def uri (self):
+        return self.__uri
+
+    def __getitem__ (self, key):
+        return self.__dict[key]
+    def __setitem__ (self, key, value):
+        assert issubclass(value, XmpBaseValue)
+        self.__dict[key] = value
+    def __delitem__ (self, key):
+        del self.__dict[key]
+    def __iter__ (self):
+        return iter(self.__dict)
+    def __len__ (self):
+        return len(self.__dict)
+    def __contains__ (self, key):
+        return key in self.__dict
+
+class NamespaceMapping (TwoWayMapping):
+
+    def __setitem__ (self, key, value):
+        assert isinstance(value, XmpNamespace)
+        self.set_dual_value(key, value, URI(value))
+
+    def get_value (self, value):
+        return super(NamespaceMapping, self).get_value(URI(value))
+
+    def del_value (self, value):
+        super(NamespaceMapping, self).del_value(URI(value))
+
+    def contains_value (self, value):
+        return super(NamespaceMapping, self).contains_value(URI(value))
+
+    def values (self):
+        for key, value in self.items():
+            yield value
+
+RdfNamespace = XmpNamespace(
+        URI("http://www.w3.org/1999/02/22-rdf-syntax-ns#"))
+
+XNamespace = XmpNamespace(URI("adobe:ns:meta/"))
+
+XmlNamespace = XmpNamespace(URI("http://www.w3.org/XML/1998/namespace"),
+        lang=XmpText)
+
+UriTag = namedtuple("UriTag", ("uri", "name"))
+
 class XmpBaseCollection (XmpBaseValue):
     """XMP Collection"""
 
@@ -441,27 +495,95 @@ class XmpBaseCollection (XmpBaseValue):
 
 class XmpStructure (XmpBaseCollection):
 
-    def __init__ (self, mapping_or_iterable = { }):
+    prefixes = NamespaceMapping(
+            rdf = RdfNamespace,
+            x   = XNamespace,
+            xml = XmlNamespace)
+
+    def __init__ (self, mapping_or_iterable = ()):
         self.value = { }
 
     def __getitem__ (self, key):
-        namespace, name = self.__split_key(key)
+        prefix, name = self.__split_key(key)
+
+        # Get the namespace dict.
+        ns_dict = self.__get_namespace_dict(prefix)
+
+        # Get the value from the namespace dict.
+        return self.__get_from_namespace_dict(ns_dict, prefix, name)
 
     def __setitem__ (self, key, value):
-        namespace, name = self.__split_key(key)
+        prefix, name = self.__split_key(key)
+        uri = self.__get_uri(prefix, name)
 
     def __split_key (self, key):
         if self.__is_valid_key(key):
             return key
 
         else:
-            raise KeyError("expected duple (str(), str()) key")
+            raise KeyError(key)
 
     def __is_valid_key (self, key):
+        # A key is valid if it's a duple of str objects.
         return isinstance(key, tuple)       \
                 and len(key) == 2           \
                 and isinstance(key[0], str) \
                 and isinstance(key[1], str)
+
+    def __get_namespace_dict (self, prefix):
+        if prefix in self.value:
+            # If we have values under this particular namespace as-is,
+            # then we can just return that dict of values.
+            return self.value[prefix]
+
+        else:
+            # Otherwise, we need to check whether this prefix has a
+            # corresponding URI first.
+            return self.__get_namespace_dict_from_prefix(prefix)
+
+    def __get_namespace_dict_from_prefix (self, prefix):
+        # Get the corresponding URI. If there isn't one, we'll use a
+        # value that is guaranteed not to be a valid URI (i.e. None).
+        uri = self.prefixes.get(prefix, None)
+
+        # If the URI is represented in our main dict, we return its
+        # value. Otherwise, we return an empty dict.
+        return self.value.get(uri, { })
+
+    def __get_from_namespace_dict (self, ns_dict, prefix, name):
+        if name in ns_dict:
+            # Return the pythonic value if it's in there.
+            return ns_dict[name].py_value
+
+        else:
+            # If we don't have it, we should raise the KeyError with the
+            # full key (not just with the name itself).
+            raise KeyError((prefix, name))
+
+    def __get_uri (self, prefix, name):
+        if self.prefixes.contains_value(prefix):
+            # If the prefix is already a URI, we're all set.
+            return prefix
+
+        else:
+            # If not, try to get a URI from our prefix dict.
+            return self.__get_uri_from_prefix_dict(prefix, name)
+
+    def __get_uri_from_prefix_dict (self, prefix, name):
+        # Normally, I'd prefer testing over exception handling (to avoid
+        # the overhead of generating a traceback), but, in this case,
+        # the result on failure will be to raise an exception anyway, so
+        # there's no reason to fear that traceback. It is, in fact,
+        # cheaper to skip the containment test.
+        try:
+            # This could raise a KeyError.
+            return self.prefixes[prefix]
+
+        except KeyError:
+            # If it does, it won't be quite right, as it'll be raised on
+            # only the prefix. I want the user to receive a KeyError
+            # based on the full key given.
+            raise KeyError((prefix, name))
 
 class XmpBaseArray (XmpBaseCollection):
     """XMP Array"""

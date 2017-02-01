@@ -5,13 +5,18 @@ from collections.abc import MutableMapping
 import unittest
 
 from blister.xmp import VanillaXMP, \
-        TwoWayMapping, \
-        URI, \
-        XmpBaseValue, \
-        XmpURI, \
-        XmpText, \
-        XmpInteger, \
-        XmpBaseCollection, \
+        TwoWayMapping,              \
+        XmpNamespace,               \
+        RdfNamespace,               \
+        XNamespace,                 \
+        XmlNamespace,               \
+        NamespaceMapping,           \
+        URI,                        \
+        XmpBaseValue,               \
+        XmpURI,                     \
+        XmpText,                    \
+        XmpInteger,                 \
+        XmpBaseCollection,          \
         XmpStructure
 
 class TestVanillaXMP (unittest.TestCase):
@@ -324,6 +329,44 @@ class TestTwoWayMapping (unittest.TestCase):
 
         self.assertEqual(set(self.main.items()),
                 {("hey", "hello"), ("bye", "later")})
+
+class TestNamespaceMapping (unittest.TestCase):
+
+    def test_is_two_way_mapping (self):
+        self.assertTrue(issubclass(NamespaceMapping, TwoWayMapping))
+
+    def test_move_namespaces_around (self):
+        prefixes = NamespaceMapping(
+                rdf = RdfNamespace)
+
+        self.assertEqual(len(prefixes), 1)
+        self.assertIs(prefixes["rdf"], RdfNamespace)
+        self.assertEqual(prefixes.get_value(RdfNamespace), "rdf")
+        self.assertTrue(prefixes.contains_value(RdfNamespace))
+
+class TestXmpNamespace (unittest.TestCase):
+
+    def test_is_mapping (self):
+        self.assertTrue(issubclass(XmpNamespace, MutableMapping))
+
+    def test_can_make_uri (self):
+        ns = XmpNamespace("holla")
+        self.assertEqual(URI(ns), "holla")
+        self.assertEqual(len(ns), 0)
+
+    def test_rdf_x_xml (self):
+        self.assertEqual(len(RdfNamespace), 0)
+        self.assertEqual(len(XNamespace), 0)
+        self.assertEqual(len(XmlNamespace), 1)
+
+        self.assertEqual(URI(RdfNamespace),
+                URI("http://www.w3.org/1999/02/22-rdf-syntax-ns#"))
+        self.assertEqual(URI(XNamespace), URI("adobe:ns:meta/"))
+        self.assertEqual(URI(XmlNamespace),
+                URI("http://www.w3.org/XML/1998/namespace"))
+
+        self.assertIn("lang", XmlNamespace)
+        self.assertIs(XmlNamespace["lang"], XmpText)
 
 class TestURI (unittest.TestCase):
 
