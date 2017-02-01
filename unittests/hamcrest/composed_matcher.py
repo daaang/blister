@@ -48,35 +48,3 @@ class ComposedMatcher (BaseMatcher):
         else:
             assert len(definite_tuple) == 2
             return definite_tuple + (None,)
-
-class evaluates_to (BaseMatcher):
-
-    def __init__ (self, expected):
-        self.expected = expected
-
-    def _matches (self, item):
-        return self.__get_bool_for(item) == self.expected
-
-    def describe_to (self, description):
-        description.append_text("an object with {} truthiness".format(
-                repr(self.expected)))
-
-    def describe_mismatch (self, item, description):
-        actual = self.__get_bool_for(item)
-
-        if actual is None:
-            description.append_text("no truthiness ") \
-                    .append_description_of(item)
-
-        else:
-            description.append_text("was {} ".format(actual)) \
-                    .append_description_of(item)
-
-    def __get_bool_for (self, item):
-        try:
-            result = bool(item)
-            if result is True or result is False:
-                return result
-
-        except:
-            pass
