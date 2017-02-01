@@ -34,3 +34,7 @@ class GivenEmptyXMP (unittest.TestCase):
         assert_that(self.xmp.exifEX, has_length(0))
         assert_that(self.xmp.exif, has_length(0))
         assert_that(self.xmp.tiff, has_length(0))
+
+    def test_namespaces_are_also_accessible_via_getitem (self):
+        assert_that(calling(lambda x: x["fake"]).with_args(self.xmp),
+                    raises(KeyError))

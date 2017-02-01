@@ -29,6 +29,9 @@ cdef class XMP:
         else:
             self.raise_error_no_attr(name)
 
+    def __getitem__ (self, key):
+        raise KeyError
+
     def __repr__ (self):
         return "<{}>".format(self.__class__.__name__)
 
