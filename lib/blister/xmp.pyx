@@ -22,19 +22,19 @@ cdef class XMP:
     def __iter__ (self):
         return iter(())
 
-    def __getattr__ (self, name):
-        if name in DEFAULT_XMP_NAMESPACES:
-            return ()
-
-        else:
-            self.raise_error_no_attr(name)
-
     def __getitem__ (self, key):
         if key in DEFAULT_XMP_NAMESPACES:
             return ()
 
         else:
             raise KeyError(key)
+
+    def __getattr__ (self, name):
+        try:
+            return self[name]
+
+        except KeyError:
+            self.raise_error_no_attr(name)
 
     def __repr__ (self):
         return "<{}>".format(self.__class__.__name__)
