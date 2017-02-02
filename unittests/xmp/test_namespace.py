@@ -27,6 +27,9 @@ class GivenNamespaceWithOnlyURI (unittest.TestCase):
     def test_instance_evaluates_to_false (self):
         assert_that(self.ns, evaluates_to(False))
 
+    def test_instance_has_no_length (self):
+        assert_that(self.ns, has_length(0))
+
     def test_instance_is_valid (self):
         assert_that(self.ns.is_valid(), is_(equal_to(True)))
 
