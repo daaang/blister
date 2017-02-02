@@ -9,11 +9,20 @@ from blister.xmp import XMPNamespace
 
 class GivenNamespaceWithNoSettings (unittest.TestCase):
 
-    def setUp (self):
+    def test_no_uri_raises_error (self):
         class DefaultNamespace (XMPNamespace):
             pass
 
-        self.ns = DefaultNamespace()
+        assert_that(calling(DefaultNamespace),
+                    raises(XMPNamespace.NoURI))
+
+class GivenNamespaceWithOnlyURI (unittest.TestCase):
+
+    def setUp (self):
+        class URIOnlyNamespace (XMPNamespace):
+            uri = "some uri"
+
+        self.ns = URIOnlyNamespace()
 
     def test_instance_evaluates_to_false (self):
         assert_that(self.ns, evaluates_to(False))

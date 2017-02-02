@@ -2,7 +2,16 @@
 # All Rights Reserved. Licensed according to the terms of the Revised
 # BSD License. See LICENSE.txt for details.
 
-cdef class XMPNamespace:
+class XMPNamespace:
+
+    uri = None
+
+    class NoURI (RuntimeError):
+        pass
+
+    def __init__ (self):
+        if self.uri is None:
+            raise XMPNamespace.NoURI
 
     def is_valid (self):
         return True
