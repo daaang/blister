@@ -3,7 +3,7 @@
 # BSD License. See LICENSE.txt for details.
 from hamcrest import *
 import unittest
-from .hamcrest import evaluates_to
+from ..hamcrest import evaluates_to
 
 from blister.xmp import XMP
 
