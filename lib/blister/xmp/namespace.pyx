@@ -3,4 +3,9 @@
 # BSD License. See LICENSE.txt for details.
 
 cdef class XMPNamespace:
-    pass
+
+    def __bool__ (self):
+        return False
+
+    def __repr__ (self):
+        return "<{}>".format(self.__class__.__name__)

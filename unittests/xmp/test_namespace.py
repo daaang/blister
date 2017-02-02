@@ -10,4 +10,8 @@ from blister.xmp import XMPNamespace
 class XMPNamespaceTest (unittest.TestCase):
 
     def test_degenerate (self):
-        ns = XMPNamespace()
+        class DefaultNamespace (XMPNamespace):
+            pass
+
+        ns = DefaultNamespace()
+        assert_that(ns, evaluates_to(False))
