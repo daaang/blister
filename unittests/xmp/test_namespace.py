@@ -7,11 +7,13 @@ from ..hamcrest import evaluates_to
 
 from blister.xmp import XMPNamespace
 
-class XMPNamespaceTest (unittest.TestCase):
+class GivenNamespaceWithNoSettings (unittest.TestCase):
 
-    def test_degenerate (self):
+    def setUp (self):
         class DefaultNamespace (XMPNamespace):
             pass
 
-        ns = DefaultNamespace()
-        assert_that(ns, evaluates_to(False))
+        self.ns = DefaultNamespace()
+
+    def test_instance_evaluates_to_false (self):
+        assert_that(self.ns, evaluates_to(False))
