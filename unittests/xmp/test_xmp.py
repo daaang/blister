@@ -5,7 +5,7 @@ from hamcrest import *
 import unittest
 from ..hamcrest import evaluates_to
 
-from blister.xmp import XMP, XMPNamespace
+from blister.xmp import XMP
 
 class GivenEmptyXMP (unittest.TestCase):
 
