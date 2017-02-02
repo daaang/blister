@@ -32,3 +32,10 @@ class GivenNamespaceWithOnlyURI (unittest.TestCase):
 
     def test_can_autogen_xml_prefix (self):
         assert_that(self.ns.prefix, is_(equal_to("uri-only")))
+
+    def test_autogen_prefix_is_based_on_class_name (self):
+        class JustAnotherNamespace (XMPNamespace):
+            uri = "another one"
+
+        ns = JustAnotherNamespace()
+        assert_that(ns.prefix, is_(equal_to("just-another")))
