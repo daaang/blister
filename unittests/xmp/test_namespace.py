@@ -29,3 +29,6 @@ class GivenNamespaceWithOnlyURI (unittest.TestCase):
 
     def test_instance_is_valid (self):
         assert_that(self.ns.is_valid(), is_(equal_to(True)))
+
+    def test_can_autogen_xml_prefix (self):
+        assert_that(self.ns.prefix, is_(equal_to("uri-only")))

@@ -5,6 +5,7 @@
 class XMPNamespace:
 
     uri = None
+    prefix = "uri-only"
 
     class NoURI (RuntimeError):
         pass
