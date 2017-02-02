@@ -4,6 +4,9 @@
 
 cdef class XMPNamespace:
 
+    def is_valid (self):
+        return True
+
     def __bool__ (self):
         return False
 
