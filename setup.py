@@ -60,7 +60,7 @@ setup(
                      "Graphics", "Graphics Conversion")),
     ],
 
-    packages=["blister"],
+    packages=["blister", "blister.xmp"],
     package_dir={"": "lib"},
     ext_modules=get_ext_modules("lib/blister"),
 )
