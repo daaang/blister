@@ -21,19 +21,21 @@ class XMPNamespace:
         if self.uri is None:
             raise XMPNamespace.NoURI
 
+        self.__internal = True
+
     @property
     def prefix (self):
         words = camel_convert(self.__class__.__name__).split("-")
         return "-".join(s for s in words if s != "namespace")
 
     def is_valid (self):
-        return True
+        return self.__internal
 
     def __len__ (self):
         return 0
 
     def __setitem__ (self, key, value):
-        pass
+        self.__internal = False
 
     def __repr__ (self):
         return "<{}>".format(self.__class__.__name__)

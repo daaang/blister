@@ -51,5 +51,5 @@ class GivenNamespaceWithOnlyURIWithOneElt (ContextNamespaceWithOnlyURI):
         super().setUp()
         self.ns["key"] = "value"
 
-    def test_can_add_an_element (self):
-        pass
+    def test_instance_is_invalid (self):
+        assert_that(self.ns.is_valid(), is_(equal_to(False)))
