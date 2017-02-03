@@ -51,5 +51,8 @@ class GivenNamespaceWithOnlyURIWithOneElt (ContextNamespaceWithOnlyURI):
         super().setUp()
         self.ns["key"] = "value"
 
+    def test_instance_has_length_of_one (self):
+        assert_that(self.ns, has_length(1))
+
     def test_instance_is_invalid (self):
         assert_that(self.ns.is_valid(), is_(equal_to(False)))
