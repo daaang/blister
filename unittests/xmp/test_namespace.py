@@ -56,3 +56,6 @@ class GivenNamespaceWithOnlyURIWithOneElt (ContextNamespaceWithOnlyURI):
 
     def test_instance_is_invalid (self):
         assert_that(self.ns.is_valid(), is_(equal_to(False)))
+
+    def test_instance_yields_value_if_asked (self):
+        assert_that(self.ns["key"], is_(equal_to("value")))

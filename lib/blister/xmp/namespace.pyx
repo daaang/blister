@@ -34,6 +34,9 @@ class XMPNamespace:
     def __len__ (self):
         return 0 if self.__internal else 1
 
+    def __getitem__ (self, key):
+        return "value"
+
     def __setitem__ (self, key, value):
         self.__internal = False
 
