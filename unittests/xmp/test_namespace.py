@@ -16,13 +16,15 @@ class GivenNamespaceWithNoSettings (unittest.TestCase):
         assert_that(calling(DefaultNamespace),
                     raises(XMPNamespace.NoURI))
 
-class GivenNamespaceWithOnlyURI (unittest.TestCase):
+class ContextNamespaceWithOnlyURI (unittest.TestCase):
 
     def setUp (self):
         class URIOnlyNamespace (XMPNamespace):
             uri = "some uri"
 
         self.ns = URIOnlyNamespace()
+
+class GivenNamespaceWithOnlyURI (ContextNamespaceWithOnlyURI):
 
     def test_instance_evaluates_to_false (self):
         assert_that(self.ns, evaluates_to(False))
@@ -42,3 +44,18 @@ class GivenNamespaceWithOnlyURI (unittest.TestCase):
 
         ns = JustAnotherNamespace()
         assert_that(ns.prefix, is_(equal_to("just-another")))
+
+class GivenNamespaceWithOnlyURIWithOneElt (ContextNamespaceWithOnlyURI):
+
+    def setUp (self):
+        super().setUp()
+        self.ns["key"] = "value"
+
+    def test_instance_has_length_of_one (self):
+        assert_that(self.ns, has_length(1))
+
+    def test_instance_is_invalid (self):
+        assert_that(self.ns.is_valid(), is_(equal_to(False)))
+
+    def test_instance_yields_value_if_asked (self):
+        assert_that(self.ns["key"], is_(equal_to("value")))
