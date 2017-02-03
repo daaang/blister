@@ -42,3 +42,6 @@ class GivenNamespaceWithOnlyURI (unittest.TestCase):
 
         ns = JustAnotherNamespace()
         assert_that(ns.prefix, is_(equal_to("just-another")))
+
+    def test_can_add_an_element (self):
+        self.ns["key"] = "value"
