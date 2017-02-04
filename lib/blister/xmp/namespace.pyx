@@ -26,7 +26,8 @@ class XMPNamespace (MutableMapping):
         self.__internal = { }
 
     def is_valid (self):
-        return all(k in self.types for k in self)
+        return all(k in self.types and type(k) == self.types[k] \
+                for k in self)
 
     @property
     def prefix (self):
