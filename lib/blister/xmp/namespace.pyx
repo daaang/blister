@@ -27,11 +27,8 @@ class XMPNamespace (MutableMapping):
         self.__internal = { }
 
     def is_valid (self):
-        if self.__all_keys_are_valid():
-            return self.__all_required_keys_are_present()
-
-        else:
-            return False
+        return self.__all_keys_are_valid() \
+                and self.__all_required_keys_are_present()
 
     @property
     def prefix (self):
