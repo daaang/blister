@@ -15,7 +15,7 @@ class XMPNamespace (MutableMapping):
 
     uri = None
     types = { }
-    required = None
+    required = ( )
 
     class NoURI (RuntimeError):
         pass
@@ -28,7 +28,7 @@ class XMPNamespace (MutableMapping):
 
     def is_valid (self):
         if all(self.__is_valid_key(k) for k in self):
-            return not bool(self.required)
+            return all(k in self for k in self.required)
 
     @property
     def prefix (self):

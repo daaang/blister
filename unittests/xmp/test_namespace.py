@@ -154,7 +154,7 @@ class GivenNamespaceWithOptionalValues (unittest.TestCase):
 class GivenNamespaceWithRequiredValues (unittest.TestCase):
 
     def setUp (self):
-        class RequiredValuesNamespace (XMPNamespace):
+        class RequiredValueNamespace (XMPNamespace):
             uri = "uri"
             types = {
                 "counter": int,
@@ -163,7 +163,11 @@ class GivenNamespaceWithRequiredValues (unittest.TestCase):
 
             required = ("name",)
 
-        self.ns = RequiredValuesNamespace()
+        self.ns = RequiredValueNamespace()
 
     def test_empty_instance_is_invalid (self):
         assert_that(self.ns, is_not(a_valid_object()))
+
+    def test_valid_if_required_value_is_present (self):
+        self.ns["name"] = "matt"
+        assert_that(self.ns, is_(a_valid_object()))
