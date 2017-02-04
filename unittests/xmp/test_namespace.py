@@ -45,7 +45,7 @@ class GivenNamespaceWithOnlyURI (ContextNamespaceWithOnlyURI):
         ns = JustAnotherNamespace()
         assert_that(ns.prefix, is_(equal_to("just-another")))
 
-class GivenNamespaceWithOnlyURIWithOneElt (ContextNamespaceWithOnlyURI):
+class GivenNamespaceWithOnlyURIWithKeyIsValue (ContextNamespaceWithOnlyURI):
 
     def setUp (self):
         super().setUp()
@@ -56,6 +56,9 @@ class GivenNamespaceWithOnlyURIWithOneElt (ContextNamespaceWithOnlyURI):
 
     def test_instance_is_invalid (self):
         assert_that(self.ns.is_valid(), is_(equal_to(False)))
+
+    def test_instance_contains_key (self):
+        assert_that(self.ns, has_key("key"))
 
     def test_instance_yields_value_if_asked (self):
         assert_that(self.ns["key"], is_(equal_to("value")))
