@@ -142,3 +142,8 @@ class GivenNamespaceWithOptionalValues (unittest.TestCase):
     def test_adding_unexpected_values_still_invalidates (self):
         self.ns["what"] = 0
         assert_that(self.ns.is_valid(), is_(equal_to(False)))
+
+    @unittest.skip
+    def test_adding_incorrect_types_invalidates (self):
+        self.ns["counter"] = "hi"
+        assert_that(self.ns.is_valid(), is_(equal_to(False)))
