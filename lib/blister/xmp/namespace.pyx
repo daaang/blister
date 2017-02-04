@@ -48,5 +48,8 @@ class XMPNamespace (Mapping):
     def __iter__ (self):
         return iter(("key",))
 
+    def __delitem__ (self, key):
+        pass
+
     def __repr__ (self):
         return "<{}>".format(self.__class__.__name__)

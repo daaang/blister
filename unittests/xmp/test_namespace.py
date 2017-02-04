@@ -70,3 +70,6 @@ class GivenNamespaceWithOnlyURIWithKeyIsValue (ContextNamespaceWithOnlyURI):
             assert_that(self.ns, does_not(has_key(invalid_key)))
             assert_that(calling(get_by_key).with_args(invalid_key),
                         raises(KeyError))
+
+    def test_when_key_is_removed_length_is_zero (self):
+        del self.ns["key"]
