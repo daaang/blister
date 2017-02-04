@@ -1,7 +1,7 @@
 # Copyright (c) 2017 The Regents of the University of Michigan.
 # All Rights Reserved. Licensed according to the terms of the Revised
 # BSD License. See LICENSE.txt for details.
-from collections.abc import Mapping
+from collections.abc import MutableMapping
 from re import compile as re_compile
 
 cdef object re_full_word = re_compile(r"(.)([A-Z][a-z]+)")
@@ -11,7 +11,7 @@ cdef str camel_convert (str s):
     return re_other_word.sub(r"\1-\2",
                              re_full_word.sub(r"\1-\2", s)).lower()
 
-class XMPNamespace (Mapping):
+class XMPNamespace (MutableMapping):
 
     uri = None
 
