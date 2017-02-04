@@ -119,3 +119,22 @@ class GivenNamespaceWithURIAndPrefixOnly (unittest.TestCase):
 
         ns = URIAndPrefixNamespace()
         assert_that(ns.prefix, is_(equal_to("abc")))
+
+class GivenNamespaceWithOptionalValues (unittest.TestCase):
+
+    def setUp (self):
+        class OptionalValuesNamespace (XMPNamespace):
+            uri = "uri"
+            types = {
+                "counter": int,
+                "name": str,
+            }
+
+        self.ns = OptionalValuesNamespace()
+
+    def test_empty_instance_is_valid (self):
+        assert_that(self.ns.is_valid(), is_(equal_to(True)))
+
+    def test_adding_expected_values_dont_invalidate (self):
+        self.ns["name"] = "matt"
+        assert_that(self.ns.is_valid(), is_(equal_to(True)))
