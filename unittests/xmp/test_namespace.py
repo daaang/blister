@@ -25,6 +25,12 @@ class ContextNamespaceWithOnlyURI (unittest.TestCase):
 
         self.ns = URIOnlyNamespace()
 
+class ContextNamespaceWithOnlyURIWithOneValue (ContextNamespaceWithOnlyURI):
+
+    def setUp (self):
+        super().setUp()
+        self.ns[self.key] = self.value
+
 class GivenNamespaceWithOnlyURI (ContextNamespaceWithOnlyURI):
 
     def test_instance_evaluates_to_false (self):
@@ -46,11 +52,11 @@ class GivenNamespaceWithOnlyURI (ContextNamespaceWithOnlyURI):
         ns = JustAnotherNamespace()
         assert_that(ns.prefix, is_(equal_to("just-another")))
 
-class GivenNamespaceWithOnlyURIWithKeyIsValue (ContextNamespaceWithOnlyURI):
+class TestsGivenOnlyURIAndOneValue:
 
-    def setUp (self):
-        super().setUp()
-        self.ns["key"] = "value"
+    key = None
+    value = None
+    other_keys = "yee", "hello", "Nope"
 
     def test_instance_has_length_of_one (self):
         assert_that(self.ns, has_length(1))
@@ -59,18 +65,25 @@ class GivenNamespaceWithOnlyURIWithKeyIsValue (ContextNamespaceWithOnlyURI):
         assert_that(self.ns.is_valid(), is_(equal_to(False)))
 
     def test_instance_contains_key (self):
-        assert_that(self.ns, has_key("key"))
+        assert_that(self.ns, has_key(self.key))
 
     def test_instance_yields_value_if_asked (self):
-        assert_that(self.ns["key"], is_(equal_to("value")))
+        assert_that(self.ns[self.key], is_(equal_to(self.value)))
 
     def test_instance_does_not_have_other_keys (self):
         get_by_key = lambda k: self.ns[k]
-        for invalid_key in "yee", "hello", "NOPE":
+        for invalid_key in self.other_keys:
             assert_that(self.ns, does_not(has_key(invalid_key)))
             assert_that(calling(get_by_key).with_args(invalid_key),
                         raises(KeyError))
 
     def test_when_key_is_removed_length_is_zero (self):
-        del self.ns["key"]
+        del self.ns[self.key]
         assert_that(self.ns, has_length(0))
+
+class GivenOnlyURIAndKeyEqualsValue (
+        ContextNamespaceWithOnlyURIWithOneValue,
+        TestsGivenOnlyURIAndOneValue):
+
+    key = "key"
+    value = "value"
