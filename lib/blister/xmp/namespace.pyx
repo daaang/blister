@@ -36,7 +36,11 @@ class XMPNamespace (Mapping):
         return 0 if self.__internal else 1
 
     def __getitem__ (self, key):
-        return "value"
+        if key == "key":
+            return "value"
+
+        else:
+            raise KeyError
 
     def __setitem__ (self, key, value):
         self.__internal = False

@@ -4,6 +4,7 @@
 from hamcrest import *
 import unittest
 from ..hamcrest import evaluates_to
+does_not = is_not
 
 from blister.xmp import XMPNamespace
 
@@ -62,3 +63,8 @@ class GivenNamespaceWithOnlyURIWithKeyIsValue (ContextNamespaceWithOnlyURI):
 
     def test_instance_yields_value_if_asked (self):
         assert_that(self.ns["key"], is_(equal_to("value")))
+
+    def test_instance_does_not_have_other_keys (self):
+        assert_that(self.ns, does_not(has_key("yee")))
+        assert_that(calling(lambda k: self.ns[k]).with_args("yee"),
+                    raises(KeyError))
