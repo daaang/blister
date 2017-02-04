@@ -87,3 +87,10 @@ class GivenOnlyURIAndKeyEqualsValue (
 
     key = "key"
     value = "value"
+
+class GivenOnlyURIAndMattEqualsGreat (
+        ContextNamespaceWithOnlyURIWithOneValue,
+        TestsGivenOnlyURIAndOneValue):
+
+    key = "matt"
+    value = "great"

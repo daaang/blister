@@ -36,20 +36,16 @@ class XMPNamespace (MutableMapping):
         return len(self.__internal)
 
     def __getitem__ (self, key):
-        if key == "key":
-            return "value"
-
-        else:
-            raise KeyError
+        return self.__internal[key]
 
     def __setitem__ (self, key, value):
-        self.__internal["key"] = "value"
+        self.__internal[key] = value
 
     def __iter__ (self):
-        return iter(("key",))
+        return iter(self.__internal)
 
     def __delitem__ (self, key):
-        del self.__internal["key"]
+        del self.__internal[key]
 
     def __repr__ (self):
         return "<{} {}>".format(self.__class__.__name__,
