@@ -81,6 +81,10 @@ class TestsGivenOnlyURIAndOneValue:
         del self.ns[self.key]
         assert_that(self.ns, has_length(0))
 
+    def test_when_key_is_removed_it_is_no_longer_there (self):
+        del self.ns[self.key]
+        assert_that(self.ns, does_not(has_key(self.key)))
+
 class GivenOnlyURIAndKeyEqualsValue (
         ContextNamespaceWithOnlyURIWithOneValue,
         TestsGivenOnlyURIAndOneValue):
