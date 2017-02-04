@@ -3,7 +3,7 @@
 # BSD License. See LICENSE.txt for details.
 from hamcrest import *
 import unittest
-from ..hamcrest import evaluates_to
+from ..hamcrest import evaluates_to, a_valid_object
 does_not = is_not
 
 from blister.xmp import XMPNamespace
@@ -40,7 +40,7 @@ class GivenNamespaceWithOnlyURI (ContextNamespaceWithOnlyURI):
         assert_that(self.ns, has_length(0))
 
     def test_instance_is_valid (self):
-        assert_that(self.ns.is_valid(), is_(equal_to(True)))
+        assert_that(self.ns, is_(a_valid_object()))
 
     def test_can_autogen_xml_prefix (self):
         assert_that(self.ns.prefix, is_(equal_to("uri-only")))
@@ -62,7 +62,7 @@ class TestsGivenOnlyURIAndOneValue:
         assert_that(self.ns, has_length(1))
 
     def test_instance_is_invalid (self):
-        assert_that(self.ns.is_valid(), is_(equal_to(False)))
+        assert_that(self.ns, is_not(a_valid_object()))
 
     def test_instance_contains_key (self):
         assert_that(self.ns, has_key(self.key))
@@ -133,17 +133,17 @@ class GivenNamespaceWithOptionalValues (unittest.TestCase):
         self.ns = OptionalValuesNamespace()
 
     def test_empty_instance_is_valid (self):
-        assert_that(self.ns.is_valid(), is_(equal_to(True)))
+        assert_that(self.ns, is_(a_valid_object()))
 
     def test_adding_expected_values_dont_invalidate (self):
         self.ns["name"] = "matt"
-        assert_that(self.ns.is_valid(), is_(equal_to(True)))
+        assert_that(self.ns, is_(a_valid_object()))
 
     def test_adding_unexpected_values_still_invalidates (self):
         self.ns["what"] = 0
-        assert_that(self.ns.is_valid(), is_(equal_to(False)))
+        assert_that(self.ns, is_not(a_valid_object()))
 
     @unittest.skip
     def test_adding_incorrect_types_invalidates (self):
         self.ns["counter"] = "hi"
-        assert_that(self.ns.is_valid(), is_(equal_to(False)))
+        assert_that(self.ns, is_not(a_valid_object()))
