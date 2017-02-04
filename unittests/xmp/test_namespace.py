@@ -65,6 +65,8 @@ class GivenNamespaceWithOnlyURIWithKeyIsValue (ContextNamespaceWithOnlyURI):
         assert_that(self.ns["key"], is_(equal_to("value")))
 
     def test_instance_does_not_have_other_keys (self):
-        assert_that(self.ns, does_not(has_key("yee")))
-        assert_that(calling(lambda k: self.ns[k]).with_args("yee"),
+        get_by_key = lambda k: self.ns[k]
+        invalid_key = "yee"
+        assert_that(self.ns, does_not(has_key(invalid_key)))
+        assert_that(calling(get_by_key).with_args(invalid_key),
                     raises(KeyError))
