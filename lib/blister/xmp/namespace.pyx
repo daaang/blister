@@ -59,4 +59,12 @@ class XMPNamespace (MutableMapping):
         if type(self[key]) == self.types[key]:
             return True
 
-        return False
+        return self.__can_convert_to_correct_type(key)
+
+    def __can_convert_to_correct_type (self, key):
+        try:
+            v = self.types[key](self[key])
+            return True
+
+        except ValueError:
+            return False

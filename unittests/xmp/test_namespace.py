@@ -146,3 +146,7 @@ class GivenNamespaceWithOptionalValues (unittest.TestCase):
     def test_adding_incorrect_types_invalidates (self):
         self.ns["counter"] = "hi"
         assert_that(self.ns, is_not(a_valid_object()))
+
+    def test_adding_a_convertable_value_is_ok (self):
+        self.ns["name"] = 5
+        assert_that(self.ns, is_(a_valid_object()))
