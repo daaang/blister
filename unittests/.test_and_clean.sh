@@ -43,6 +43,8 @@ if bash unittests/.quick_test.sh; then
   echo ""
   make clean
   echo_success
+  git add .
+  git commit -v
 
 else
   echo ""
