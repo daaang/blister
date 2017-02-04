@@ -73,3 +73,4 @@ class GivenNamespaceWithOnlyURIWithKeyIsValue (ContextNamespaceWithOnlyURI):
 
     def test_when_key_is_removed_length_is_zero (self):
         del self.ns["key"]
+        assert_that(self.ns, has_length(0))
