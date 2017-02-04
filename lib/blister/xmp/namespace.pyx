@@ -21,9 +21,7 @@ class XMPNamespace (MutableMapping):
         pass
 
     def __init__ (self):
-        if self.uri is None:
-            raise XMPNamespace.NoURI
-
+        self.__assert_we_have_a_uri()
         self.__internal = { }
 
     def is_valid (self):
@@ -53,6 +51,10 @@ class XMPNamespace (MutableMapping):
     def __repr__ (self):
         return "<{} {}>".format(self.__class__.__name__,
                                 repr(self.__internal))
+
+    def __assert_we_have_a_uri (self):
+        if self.uri is None:
+            raise XMPNamespace.NoURI
 
     def __all_keys_are_valid (self):
         return all(self.__is_valid_key(k) for k in self)
