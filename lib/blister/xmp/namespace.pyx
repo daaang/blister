@@ -14,7 +14,7 @@ cdef str camel_convert (str s):
 class XMPNamespace (MutableMapping):
 
     uri = None
-    types = None
+    types = { }
 
     class NoURI (RuntimeError):
         pass
@@ -26,7 +26,7 @@ class XMPNamespace (MutableMapping):
         self.__internal = { }
 
     def is_valid (self):
-        return len(self) == 0 or bool(self.types)
+        return all(k in self.types for k in self)
 
     @property
     def prefix (self):

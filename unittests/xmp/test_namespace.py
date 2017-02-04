@@ -138,3 +138,7 @@ class GivenNamespaceWithOptionalValues (unittest.TestCase):
     def test_adding_expected_values_dont_invalidate (self):
         self.ns["name"] = "matt"
         assert_that(self.ns.is_valid(), is_(equal_to(True)))
+
+    def test_adding_unexpected_values_still_invalidates (self):
+        self.ns["what"] = 0
+        assert_that(self.ns.is_valid(), is_(equal_to(False)))
