@@ -85,6 +85,10 @@ class TestsGivenOnlyURIAndOneValue:
         del self.ns[self.key]
         assert_that(self.ns, does_not(has_key(self.key)))
 
+    def test_when_second_key_is_added_length_is_two (self):
+        self.ns["second_key"] = "second_value"
+        assert_that(self.ns, has_length(2))
+
 class GivenOnlyURIAndKeyEqualsValue (
         ContextNamespaceWithOnlyURIWithOneValue,
         TestsGivenOnlyURIAndOneValue):
