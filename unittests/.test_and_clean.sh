@@ -38,13 +38,22 @@ echo_failure() {
   fi
 }
 
+changes_have_been_made() {
+  [[ `git status --porcelain` ]]
+}
+
 echo ""
 if bash unittests/.quick_test.sh; then
   echo ""
   make clean
   echo_success
-  git add .
-  git commit -v || git status
+  if changes_have_been_made; then
+    git add .
+    git commit -v || git status
+
+  else
+    git status
+  fi
 
 else
   echo ""
