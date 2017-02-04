@@ -150,3 +150,18 @@ class GivenNamespaceWithOptionalValues (unittest.TestCase):
     def test_adding_a_convertable_value_is_ok (self):
         self.ns["name"] = 5
         assert_that(self.ns, is_(a_valid_object()))
+
+class GivenNamespaceWithRequiredValues (unittest.TestCase):
+
+    def test_empty_instance_is_invalid (self):
+        class RequiredValuesNamespace (XMPNamespace):
+            uri = "uri"
+            types = {
+                "counter": int,
+                "name": str,
+            }
+
+            required = ("name",)
+
+        self.ns = RequiredValuesNamespace()
+        assert_that(self.ns, is_not(a_valid_object()))
