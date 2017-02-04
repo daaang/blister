@@ -27,7 +27,7 @@ class XMPNamespace (MutableMapping):
         self.__internal = { }
 
     def is_valid (self):
-        if all(self.__is_valid_key(k) for k in self):
+        if self.__all_keys_are_valid():
             return all(k in self for k in self.required)
 
         else:
@@ -56,6 +56,9 @@ class XMPNamespace (MutableMapping):
     def __repr__ (self):
         return "<{} {}>".format(self.__class__.__name__,
                                 repr(self.__internal))
+
+    def __all_keys_are_valid (self):
+        return all(self.__is_valid_key(k) for k in self)
 
     def __is_valid_key (self, key):
         if key not in self.types:
