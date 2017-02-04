@@ -42,18 +42,26 @@ changes_have_been_made() {
   [[ `git status --porcelain` ]]
 }
 
+run_git_commit_including_new_files() {
+  git add .
+  git commit -v || git status
+}
+
+helpfully_run_git_commands() {
+  if changes_have_been_made; then
+    run_git_commit_including_new_files
+
+  else
+    git status
+  fi
+}
+
 echo ""
 if bash unittests/.quick_test.sh; then
   echo ""
   make clean
   echo_success
-  if changes_have_been_made; then
-    git add .
-    git commit -v || git status
-
-  else
-    git status
-  fi
+  helpfully_run_git_commands
 
 else
   echo ""
