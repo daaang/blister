@@ -44,7 +44,7 @@ if bash unittests/.quick_test.sh; then
   make clean
   echo_success
   git add .
-  git commit -v
+  git commit -v || git status
 
 else
   echo ""
