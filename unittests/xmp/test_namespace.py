@@ -94,3 +94,10 @@ class GivenOnlyURIAndMattEqualsGreat (
 
     key = "matt"
     value = "great"
+
+class GivenOnlyURIAndThirdThingEqualsYes (
+        ContextNamespaceWithOnlyURIWithOneValue,
+        TestsGivenOnlyURIAndOneValue):
+
+    key = "third thing"
+    value = "yes"
