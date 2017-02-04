@@ -63,6 +63,7 @@ class TestsGivenOnlyURIAndOneValue:
 
     def test_instance_is_invalid (self):
         assert_that(self.ns, is_not(a_valid_object()))
+        assert_that(self.ns.is_valid(), is_(equal_to(False)))
 
     def test_instance_contains_key (self):
         assert_that(self.ns, has_key(self.key))

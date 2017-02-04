@@ -30,6 +30,9 @@ class XMPNamespace (MutableMapping):
         if all(self.__is_valid_key(k) for k in self):
             return all(k in self for k in self.required)
 
+        else:
+            return False
+
     @property
     def prefix (self):
         words = camel_convert(self.__class__.__name__).split("-")
