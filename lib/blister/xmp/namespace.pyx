@@ -22,7 +22,7 @@ class XMPNamespace (MutableMapping):
         if self.uri is None:
             raise XMPNamespace.NoURI
 
-        self.__internal = True
+        self.__internal = { }
 
     @property
     def prefix (self):
@@ -30,10 +30,10 @@ class XMPNamespace (MutableMapping):
         return "-".join(s for s in words if s != "namespace")
 
     def is_valid (self):
-        return self.__internal
+        return len(self) == 0
 
     def __len__ (self):
-        return 0 if self.__internal else 1
+        return len(self.__internal)
 
     def __getitem__ (self, key):
         if key == "key":
@@ -43,13 +43,14 @@ class XMPNamespace (MutableMapping):
             raise KeyError
 
     def __setitem__ (self, key, value):
-        self.__internal = False
+        self.__internal["key"] = "value"
 
     def __iter__ (self):
         return iter(("key",))
 
     def __delitem__ (self, key):
-        self.__internal = True
+        del self.__internal["key"]
 
     def __repr__ (self):
-        return "<{}>".format(self.__class__.__name__)
+        return "<{} {}>".format(self.__class__.__name__,
+                                repr(self.__internal))
