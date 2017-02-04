@@ -28,7 +28,7 @@ class XMPNamespace (MutableMapping):
 
     def is_valid (self):
         if self.__all_keys_are_valid():
-            return all(k in self for k in self.required)
+            return self.__all_required_keys_are_present()
 
         else:
             return False
@@ -76,3 +76,6 @@ class XMPNamespace (MutableMapping):
 
         except ValueError:
             return False
+
+    def __all_required_keys_are_present (self):
+        return all(k in self for k in self.required)
