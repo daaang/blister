@@ -105,3 +105,13 @@ class GivenOnlyURIAndThirdThingEqualsYes (
 
     key = "third thing"
     value = "yes"
+
+class GivenNamespaceWithURIAndPrefixOnly (unittest.TestCase):
+
+    def test_namespace_with_prefix_uses_custom_prefix (self):
+        class URIAndPrefixNamespace (XMPNamespace):
+            uri = "any old uri"
+            prefix = "abc"
+
+        ns = URIAndPrefixNamespace()
+        assert_that(ns.prefix, is_(equal_to("abc")))
