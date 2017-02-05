@@ -4,6 +4,8 @@
 from setuptools import setup
 from os import walk
 from os.path import abspath, dirname, join
+from re import compile as re_compile
+from sys import version_info
 from Cython.Build import cythonize
 
 class DevelopmentStatus:
@@ -17,6 +19,7 @@ class DevelopmentStatus:
     inactive = "7 - Inactive"
 
 CURRENT_STATUS = DevelopmentStatus.planning
+RE_PYTHON_FILE = re_compile(r"^.*\.pyx?$")
 
 def get_path_to_base_directory():
     return abspath(dirname(__file__))
@@ -38,8 +41,28 @@ def get_ext_modules(base_dir):
     if results:
         return cythonize(results)
 
+def maybe_replace_collections_abc (path):
+    with open(path, "r") as f:
+        contents = f.read()
+
+    if "collections.abc" in contents:
+        with open(path, "w") as f:
+            f.write(contents.replace("collections.abc", "collections"))
+
+def make_valid_for_3_2 (lib_dir):
+    for root, dirs, filenames in walk(lib_dir):
+        for filename in filenames:
+            match = RE_PYTHON_FILE.match(filename)
+            if match is None:
+                continue
+
+            maybe_replace_collections_abc(join(root, filename))
+
 base_dir = get_path_to_base_directory()
 long_desc = get_file_contents(base_dir, "README.rst")
+
+if version_info < (3, 3):
+    make_valid_for_3_2(join(base_dir, "lib"))
 
 setup(
     name="Blister",
