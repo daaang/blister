@@ -30,39 +30,48 @@ def get_file_contents(*args):
 
     return result
 
-def get_ext_modules(base_dir):
-    results = [ ]
-
+def all_files_under (base_dir):
     for root, dirs, filenames in walk(base_dir):
         for filename in filenames:
-            if filename.endswith(".pyx"):
-                results.append(join(root, filename))
+            yield join(root, filename)
 
-    if results:
-        return cythonize(results)
+def all_python_source_files (base_dir):
+    for filename in all_files_under(base_dir):
+        match = RE_PYTHON_FILE.match(filename)
+
+        if match is not None:
+            yield filename
+
+def all_cython_source_files (base_dir):
+    for filename in all_files_under(base_dir):
+        if filename.endswith(".pyx"):
+            yield filename
+
+def get_ext_modules(base_dir):
+    cython_files = list(all_cython_source_files(base_dir))
+
+    if cython_files:
+        return cythonize(cython_files)
 
 def maybe_replace_collections_abc (path):
-    with open(path, "r") as f:
-        contents = f.read()
+    contents = get_file_contents(path)
 
     if "collections.abc" in contents:
         with open(path, "w") as f:
             f.write(contents.replace("collections.abc", "collections"))
 
 def make_valid_for_3_2 (lib_dir):
-    for root, dirs, filenames in walk(lib_dir):
-        for filename in filenames:
-            match = RE_PYTHON_FILE.match(filename)
-            if match is None:
-                continue
+    for source_file in all_python_source_files(lib_dir):
+        maybe_replace_collections_abc(source_file)
 
-            maybe_replace_collections_abc(join(root, filename))
+def make_backwards_compatible (base_dir):
+    if version_info < (3, 3):
+        print("Making backwards compatible for <3.3 ...")
+        make_valid_for_3_2(join(base_dir, "lib"))
 
 base_dir = get_path_to_base_directory()
+make_backwards_compatible(base_dir)
 long_desc = get_file_contents(base_dir, "README.rst")
-
-if version_info < (3, 3):
-    make_valid_for_3_2(join(base_dir, "lib"))
 
 setup(
     name="Blister",
