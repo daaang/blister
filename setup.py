@@ -64,12 +64,14 @@ def make_valid_for_3_2 (lib_dir):
     for source_file in all_python_source_files(lib_dir):
         maybe_replace_collections_abc(source_file)
 
-base_dir = get_path_to_base_directory()
-long_desc = get_file_contents(base_dir, "README.rst")
+def make_backwards_compatible (base_dir):
+    if version_info < (3, 3):
+        print("Making backwards compatible for <3.3 ...")
+        make_valid_for_3_2(join(base_dir, "lib"))
 
-if version_info < (3, 3):
-    print("Making backwards compatible for <3.3 ...")
-    make_valid_for_3_2(join(base_dir, "lib"))
+base_dir = get_path_to_base_directory()
+make_backwards_compatible(base_dir)
+long_desc = get_file_contents(base_dir, "README.rst")
 
 setup(
     name="Blister",
