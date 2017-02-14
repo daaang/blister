@@ -21,7 +21,5 @@ clean:
 	find . -name __pycache__ | xargs rm -r
 
 test: clean build
-	bash $(FULLTEST)
-
-quicktest: build
-	bash $(QUICKTEST)
+	bash build/run_tests.sh
+	make clean
